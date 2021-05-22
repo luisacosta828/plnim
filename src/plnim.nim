@@ -1,4 +1,5 @@
 import pgxcrown
+import pgxcrown/reports/reports
 import tables
 from os import existsFile
 import dynlib
@@ -18,6 +19,7 @@ proc plnim_call_handler*(): Datum {.pgv1.} =
 
     #Get source code from plnim function 
     var source_info = getPLSourceCode(fn_oid,lang_datum)
+
     let f  = build_nim_file(source_info)
 
     if existsFile("plnim/src/lib"&source_info.name&".so"):
@@ -25,9 +27,7 @@ proc plnim_call_handler*(): Datum {.pgv1.} =
         var lib = loadlib("lib"&source_info.name&".so")
 
         if lib == nil:
-
-            echo "error loading library"
-
+            report(warning,"Need Compile to Dynlib","/var/lib/postgresql/{pg_version}/main/plnim/src/{function_name}.nim was created.", "nim c -d:release --app:lib [filename]")
         else:
             type
                pg_func = proc(symbols: seq[string]): int {. nimcall .}
