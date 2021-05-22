@@ -1,5 +1,5 @@
 create function plnim_call_handler()
-returns language handler as '$libdir/libplnim' 
+returns language_handler as '$libdir/libplnim' 
 language c strict;
 
 create language plnim
