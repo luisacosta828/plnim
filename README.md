@@ -3,7 +3,7 @@ Language Handler for executing Nim as a procedural language for postgresql
 
 # Usage
 
-##  Instalation
+##  Installation
 ### 1- Install plnim 
 ```nim
 nimble install plnim@#head
