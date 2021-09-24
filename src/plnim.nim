@@ -7,7 +7,7 @@ import strutils
 import plnim/func_utils
 import plnim/parser
 import plnim/pg_syscache
-import plnim/macro/plnim
+import plnim/toplnim
 
 PG_MODULE_MAGIC
 
@@ -45,3 +45,5 @@ proc plnim_call_handler*(): Datum {.pgv1.} =
     returnInt32(-1)
 
 PG_FUNCTION_INFO_V1(plnim_call_handler)
+
+export toplnim
