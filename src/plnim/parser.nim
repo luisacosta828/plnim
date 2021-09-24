@@ -21,9 +21,9 @@ proc procedure_definition(procedure_name, nargs, argtypes, rettype, code: string
     var body:string
 
     if parseInt(nargs) == 0:
-       procedure = procedure & "*(): " & ret  & exported_signature & " = \n"
+       procedure = procedure & "*(): " & ret & exported_signature & " = \n"
     else:
-       procedure = procedure & "*(symbols: seq[string]): " & ret  & exported_signature & " = \n"
+       procedure = procedure & "*(symbols: seq[string]): " & ret & exported_signature & " = \n"
     
     for line in splitLines(loc): 
         if line.contains("import"):

@@ -7,7 +7,7 @@ import strutils
 import plnim/func_utils
 import plnim/parser
 import plnim/pg_syscache
-
+import plnim/macro/plnim
 
 PG_MODULE_MAGIC
 
