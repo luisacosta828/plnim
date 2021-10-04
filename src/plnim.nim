@@ -1,48 +1,46 @@
 import pgxcrown
 import pgxcrown/reports/reports
 import tables
-from os import existsFile
 import dynlib
-import strutils
-import plnim/func_utils
-import plnim/parser
 import plnim/pg_syscache
 import plnim/toplnim
 
 PG_MODULE_MAGIC
-
+    
 proc plnim_call_handler*(): Datum {.pgv1.} = 
+  
+    type pg_proc = proc(a: FunctionCallInfo): Datum {. nimcall .}
 
     #Load plnim function oid and plnim oid
     #and inject fn_oid and lang_datum varibles into this scope
-    fcinfo_data()
+
+    {.emit: """FunctionCallInfo getFcinfoData(){ return fcinfo; }""".}
+
+    proc getFcinfoData():FunctionCallInfo {.importc.}
+
+    var fn_oid {. inject .} = getFcinfoData()[].flinfo[].fn_oid
+
+    var ht = SearchSysCache(ord(SysCacheIdentifier.PROCOID),ObjectIdGetDatum(fn_oid),0,0,0)
+
+    var is_null = false
+
+    var lang_datum {. inject .} = SysCacheGetAttr(ord(SysCacheIdentifier.PROCOID), ht, AttrNumber(4), addr(is_null))
+    var prosrc_datum = SysCacheGetAttr(ord(SysCacheIdentifier.PROCOID), ht, AttrNumber(25), addr(is_null))
+    var argnames_datum = SysCacheGetAttr(ord(SysCacheIdentifier.PROCOID), ht, AttrNumber(22), addr(is_null))
 
     #Get source code from plnim function 
-    var source_info = getPLSourceCode(fn_oid,lang_datum)
 
-    let f  = build_nim_file(source_info)
+    var source_info = getFunctionHeader(fn_oid, lang_datum)
+    var lib = loadlib("lib"&source_info.func_name&".so")
+    var pfun = lib.symAddr("pgx_" & source_info.func_name)
 
-    if existsFile("plnim/src/lib"&source_info.name&".so"):
-
-        var lib = loadlib("lib"&source_info.name&".so")
-
-        if lib == nil:
-            report(warning,"Need Compile to Dynlib","/var/lib/postgresql/{pg_version}/main/plnim/src/{function_name}.nim was created.", "nim c -d:release --app:lib [filename]")
-        else:
-            type
-               pg_func = proc(symbols: seq[string]): int {. nimcall .}
-
-            var fun = cast[pg_func](lib.symAddr(source_info.name))
-
-            if parseInt(source_info.nargs) > 0 :
-                var data: seq[string] = @[]
-                for n in 0..parseInt(source_info.nargs) - 1: data.add($(cast[cuint](n).getInt32))
-                returnInt32(cast[Datum](fun(data)))
-            else:
-                returnInt32(cast[Datum](fun(@[])))               
+    if lib.isNil:
+        echo "no se pudo cargar la libreria: " & "lib" & source_info.func_name & ".so"
     else:
-       echo "compile to dynlib"
-    returnInt32(-1)
+        var fun = cast[pg_proc](pfun)
+        return fun(getFcinfoData())
+        
+    returnInt32(-404)           
 
 PG_FUNCTION_INFO_V1(plnim_call_handler)
 

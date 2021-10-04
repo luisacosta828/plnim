@@ -1,7 +1,14 @@
 from pgxcrown/datatypes/basic import FunctionCallInfo
+import pg_syscache
 type Form_pg_proc* {.importc, header: "catalog/pg_proc.h".} = object
 
+
+#template fcinfo* =
+
 template fcinfo_data* =
+
+#    fcinfo()
+
     {.emit: """FunctionCallInfo getFcinfoData(){ return fcinfo; }""".}
 
     proc getFcinfoData():FunctionCallInfo {.importc.}
