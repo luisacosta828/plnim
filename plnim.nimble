@@ -15,8 +15,4 @@ requires "nim >= 2.0", "pgxcrown >= 0.7.0"
 
 # Compile plnim extension library
 before install:
-    exec("echo - Building PL/Nim extension library")
-    exec("echo - Loading PL/Nim extension library") 
-    exec("touch $HOME/pgfunctions.nim")   
-    #exec("""nim c --hints:off -d:release --app:lib -o:libplnim.so src/plnim && sudo mv libplnim.so $(pg_config --pkglibdir)""")
-    exec("""nim c --hints:off -d:release --app:lib -o:libplnim.so src/plnim""")
+    exec("""nim c --hints:off -d:release --app:lib -o:plnim.so src/plnim""")
