@@ -4,7 +4,7 @@
 
 ## Overview
 
-**plnim** is a PostgreSQL language handler that lets you write PostgreSQL functions and procedures in the Nim programming language. Built on top of [pgxcrown](https://github.com/luisacosta828/pgxcrown), plnim brings Nim’s expressive syntax, compile-time safety, and performance to your database logic—right inside Postgres.
+**plnim** is a PostgreSQL language handler that lets you write PostgreSQL functions and procedures in the Nim programming language. Built on top of [pgxcrown](https://github.com/luisacosta828/pgxcrown), plnim offers a modern, safe, and productive way to extend your database.
 
 ---
 
@@ -35,6 +35,29 @@
 ---
 
 ## Quick Start
+
+---
+
+### 🚩 **Try plnim instantly without installing Nim! (Perfect for curious developers)**
+
+Don’t have Nim installed? No worries!
+
+You can try **plnim** right away using Docker:
+
+```bash
+# Download the Dockerfile from this repository
+curl -O https://raw.githubusercontent.com/luisacosta828/plnim/master/docker/Dockerfile
+
+# Build the Docker image
+docker build -t plnim-demo -f Dockerfile .
+
+# Start PostgreSQL with plnim ready to use
+docker run --rm -p 5432:5432 plnim-demo
+```
+
+That’s it! You can now connect to PostgreSQL and start experimenting with Nim functions without setting up anything locally.
+
+---
 
 ### 1. Install Nim and PostgreSQL
 
