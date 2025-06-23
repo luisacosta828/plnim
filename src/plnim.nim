@@ -15,6 +15,7 @@ proc translate_pg_types_to_nim(typ: string): string {.inline.} =
   of "int8": "int64"
   of "float4": "float32"
   of "float8": "float64"
+  of "text": "string"
   else: "unknown"
 
 
