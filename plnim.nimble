@@ -1,6 +1,6 @@
-# Package
+    # Package
 
-version       = "0.3.1"
+version       = "0.4.0"
 author        = "luisacosta"
 description   = "Language Handler for executing Nim inside postgres as a procedural language"
 license       = "MIT"
@@ -9,7 +9,7 @@ srcDir        = "src"
 
 # Dependencies
 
-requires "nim >= 2.0", "pgxcrown >= 0.9.0"
+requires "nim >= 2.0", "pgxcrown >= 0.9.6"
 
 # Compile plnim extension library
 before install:
