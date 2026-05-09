@@ -16,8 +16,27 @@ proc translate_pg_types_to_nim(typ: string): string {.inline.} =
   of "float4": "float32"
   of "float8": "float64"
   of "text": "string"
-  else: "unknown"
+  else: typ.capitalizeAscii
 
+
+proc extract(content, l1, l2: string): (string, string) =
+  if "[type section]" notin content and "[end type section]" notin content:
+    return ("", content)
+  var
+    l1_len = l1.len
+    l2_len = l2.len
+    l1_pos = content.find(l1)
+    l2_pos = content.find(l2)
+    type_section = ""
+    body_section = ""
+
+  for line in content[l1_pos + l1_len + 1 .. l2_pos - 1]:
+    type_section.add line
+
+  for line  in content[l2_pos + l2_len + 1 .. content.len - 1]:
+    body_section.add line
+
+  return (type_section, body_section)
 
 proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, proargtypes: ptr Oid, prorettype: Oid, proargnames: seq[string]): string =
   var 
@@ -38,15 +57,20 @@ proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, proargtypes
 
   if len(plnim_args) == pronargs:
     var proc_template = """
+$type_def
 proc $proc_name($args): $ret_type =
 $body
 """
     var args:seq[string]
+    var type_def = ""
+    var body = ""
     for arg in zip(proargnames, plnim_args):
-      args.add arg[0] & ": " & translate_pg_types_to_nim($arg[1])
+      var nim_type = translate_pg_types_to_nim($arg[1])
+      args.add arg[0] & ": " & nim_type
 
-    result = proc_template.multireplace([("$proc_name", $proname), ("$ret_type", translate_pg_types_to_nim($plnim_rettype)), ("$body", $prosrc), ("$args", args.join(", "))])
-    
+    (type_def, body) = extract($prosrc, "[type section]", "[end type section]")
+    result = proc_template.multireplace([("$type_def", type_def), ("$proc_name", $proname), ("$ret_type", translate_pg_types_to_nim($plnim_rettype)), ("$body", body), ("$args", args.join(", "))])
+   
 
 template run_command(command: string) =
     discard execShellCmd(load_env.replace("$command", command))
@@ -110,10 +134,21 @@ proc plnim_call_handler*(fcinfo: FunctionCallInfo): Datum {.pgv1_plnim.} =
     when defined(linux):
       var 
         libname = "/var/lib/postgresql/postgresql_pgxtool/$prj/src/$lib".replace("$prj", $proname).replace("$lib", $proname) 
-        lib = loadLib(libname)  
+        lib = loadLib(libname)
+
+      if lib == nil:
+        ReleaseSysCache(heapTuple)
+        returnInt32(-404)
       
-      ReleaseSysCache(heapTuple)   
-      var fn_call = cast[pg_proc](lib.symAddr("pgx_" & $proname))
+      let nimfn_name = "pgx" & $proname
+      var sym = lib.symAddr(nimfn_name)
+        
+      if sym == nil:
+        ReleaseSysCache(heapTuple)
+        returnInt32(-404)
+       
+      var fn_call = cast[pg_proc](sym)
+      ReleaseSysCache(heapTuple)
       return fn_call(fcinfo)
 
     else:
