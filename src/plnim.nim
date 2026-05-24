@@ -20,7 +20,7 @@ proc translate_pg_types_to_nim(typ: string): string {.inline.} =
 
 
 proc extract(content, l1, l2: string): (string, string) =
-  if "[type section]" notin content and "[end type section]" notin content:
+  if l1 notin content and l2 notin content:
     return ("", content)
   var
     l1_len = l1.len
@@ -57,20 +57,24 @@ proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, proargtypes
 
   if len(plnim_args) == pronargs:
     var proc_template = """
+$import_def
 $type_def
 proc $proc_name($args): $ret_type =
 $body
 """
     var args:seq[string]
     var type_def = ""
+    var import_def = ""
     var body = ""
     for arg in zip(proargnames, plnim_args):
       var nim_type = translate_pg_types_to_nim($arg[1])
       args.add arg[0] & ": " & nim_type
 
+    (import_def, body) = extract($prosrc, "[import section]", "[end import section]")    
     (type_def, body) = extract($prosrc, "[type section]", "[end type section]")
-    result = proc_template.multireplace([("$type_def", type_def), ("$proc_name", $proname), ("$ret_type", translate_pg_types_to_nim($plnim_rettype)), ("$body", body), ("$args", args.join(", "))])
-   
+    result = proc_template.multireplace([("$import_def", import_def), ("$type_def", type_def), ("$proc_name", $proname), ("$ret_type", translate_pg_types_to_nim($plnim_rettype)), ("$body", body), ("$args", args.join(", "))])
+    echo "plnim result: "
+    echo $result   
 
 template run_command(command: string) =
     discard execShellCmd(load_env.replace("$command", command))
@@ -139,14 +143,14 @@ proc plnim_call_handler*(fcinfo: FunctionCallInfo): Datum {.pgv1_plnim.} =
       if lib == nil:
         ReleaseSysCache(heapTuple)
         returnInt32(-404)
-      
-      let nimfn_name = "pgx" & $proname
+
+      let nimfn_name = "pgx_" & $proname
       var sym = lib.symAddr(nimfn_name)
         
       if sym == nil:
         ReleaseSysCache(heapTuple)
         returnInt32(-404)
-       
+      
       var fn_call = cast[pg_proc](sym)
       ReleaseSysCache(heapTuple)
       return fn_call(fcinfo)
