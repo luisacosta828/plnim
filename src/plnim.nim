@@ -27,21 +27,25 @@ proc translate_pg_types_to_nim(typ: string): string {.inline.} =
 
 
 proc extract(content, l1, l2: string): (string, string) =
-  if "[type section]" notin content and "[end type section]" notin content:
+  if l1 notin content or l2 notin content:
     return ("", content)
-  var
-    l1_len = l1.len
-    l2_len = l2.len
-    l1_pos = content.find(l1)
-    l2_pos = content.find(l2)
-    type_section = ""
-    body_section = ""
+  let l1_pos = content.find(l1)
+  let l2_pos = content.find(l2)
+  if l1_pos < 0 or l2_pos < 0 or l2_pos <= l1_pos:
+    return ("", content)
 
-  for line in content[l1_pos + l1_len + 1 .. l2_pos - 1]:
-    type_section.add line
+  let typeStart = l1_pos + l1.len + 1
+  let typeEnd = l2_pos - 1
+  let bodyStart = l2_pos + l2.len + 1
 
-  for line  in content[l2_pos + l2_len + 1 .. content.len - 1]:
-    body_section.add line
+  var type_section = ""
+  var body_section = ""
+
+  if typeStart <= typeEnd and typeEnd < content.len:
+    type_section = content[typeStart .. typeEnd]
+
+  if bodyStart < content.len:
+    body_section = content[bodyStart .. ^1]
 
   return (type_section, body_section)
 
@@ -71,7 +75,16 @@ $body
     var args:seq[string]
     var type_def = ""
     var body = ""
-    for arg in zip(proargnames, plnim_args):
+
+    # Generate positional parameter names (arg0, arg1, ...) if unnamed
+    var effectiveArgNames: seq[string] = @[]
+    for i in 0 ..< int(pronargs):
+      if i < proargnames.len and proargnames[i].len > 0:
+        effectiveArgNames.add proargnames[i]
+      else:
+        effectiveArgNames.add "arg" & $i
+
+    for arg in zip(effectiveArgNames, plnim_args):
       var nim_type = translate_pg_types_to_nim($arg[1])
       args.add arg[0] & ": " & nim_type
 
