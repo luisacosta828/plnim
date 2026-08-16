@@ -79,8 +79,14 @@ $body
     result = proc_template.multireplace([("$type_def", type_def), ("$proc_name", $proname), ("$ret_type", translate_pg_types_to_nim($plnim_rettype)), ("$body", body), ("$args", args.join(", "))])
    
 
-template run_command(command: string) =
-    discard execShellCmd(load_env.replace("$command", command))
+proc is_safe_identifier(name: string): bool =
+  if name.len == 0 or name.len > 63: return false
+  for i, c in name:
+    if i == 0 and c notin {'a'..'z', 'A'..'Z', '_'}:
+      return false
+    elif c notin {'a'..'z', 'A'..'Z', '0'..'9', '_'}:
+      return false
+  return true
 
 
 proc plnim_validator*(): Datum {. pgv1 .} =
@@ -97,7 +103,11 @@ proc plnim_validator*(): Datum {. pgv1 .} =
       proargnames = get_pg_proc_argnames(heapTuple)
       
     try:
-      #Get source code from plnim function 
+      # Shell Injection Guard: Validate function name
+      if not is_safe_identifier($proname):
+        reportError("PL/Nim Security Error: Function name '" & $proname & "' contains invalid characters or exceeds 63 characters. Only letters, numbers, and underscores are permitted.")
+
+      # Get source code from plnim function 
       var code = to_pgxcrown(proname, prosrc, pronargs, proargtypes, prorettype, proargnames)
 
       when defined(linux):
@@ -108,6 +118,12 @@ proc plnim_validator*(): Datum {. pgv1 .} =
           pgxtool_bin = execCmdEx("echo $NIMPATH").output.strip
           load_env = "/bin/bash -c 'export PATH=$PGXTOOL_DIR:$PATH;$command'".replace("$PGXTOOL_DIR", pgxtool_bin)
       
+        proc run_command(command: string) =
+          let cmd = load_env.replace("$command", command)
+          let exitCode = execShellCmd(cmd)
+          if exitCode != 0:
+            reportError("PL/Nim Build Error: Command '" & command & "' for function '" & $proname & "' failed with exit code " & $exitCode & ".")
+
         if not dirExists(pgxtool_init_dir):
           run_command("pgxtool init")
          
@@ -121,7 +137,7 @@ proc plnim_validator*(): Datum {. pgv1 .} =
         
         writeFile(main_file, code)
         
-        #build extension
+        # build extension & validate exit code
         run_command("pgxtool build-extension $fn".replace("$fn", $proname))
 
       return cast[Datum](0)
