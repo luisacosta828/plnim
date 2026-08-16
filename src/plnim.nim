@@ -146,19 +146,19 @@ proc plnim_call_handler*(fcinfo: FunctionCallInfo): Datum {.pgv1_plnim.} =
           lib = loadLib(libname)
 
         if lib == nil:
-          returnInt32(-404)
+          reportError("PL/Nim Execution Error: Dynamic library for function '" & $proname & "' could not be loaded from path '" & libname & "'. Please verify 'pgxtool build-extension " & $proname & "' executed successfully.")
         
         let nimfn_name = cstring("pgx_" & $proname)
         var sym = lib.symAddr(nimfn_name)
           
         if sym == nil:
-          returnInt32(-404)
+          reportError("PL/Nim Execution Error: Exported symbol 'pgx_" & $proname & "' was not found inside dynamic library '" & libname & "'.")
          
         var fn_call = cast[pg_proc](sym)
         return fn_call(fcinfo)
 
       else:
-        returnInt32(-404)
+        reportError("PL/Nim Execution Error: PL/Nim dynamic execution is currently only supported on Linux platforms.")
     finally:
       ReleaseSysCache(heapTuple)           
 
