@@ -11,11 +11,18 @@ PG_MODULE_MAGIC
 
 proc translate_pg_types_to_nim(typ: string): string {.inline.} =
   case typ
-  of "int4": "int32"
+  of "int4", "int": "int32"
   of "int8": "int64"
+  of "int2": "int16"
   of "float4": "float32"
   of "float8": "float64"
-  of "text": "string"
+  of "text", "varchar": "string"
+  of "bool", "boolean": "bool"
+  of "_int4", "int4[]": "seq[int32]"
+  of "_int8", "int8[]": "seq[int64]"
+  of "_float8", "float8[]": "seq[float64]"
+  of "_text", "text[]": "seq[string]"
+  of "_bool", "bool[]": "seq[bool]"
   else: typ.capitalizeAscii
 
 
@@ -89,40 +96,41 @@ proc plnim_validator*(): Datum {. pgv1 .} =
       prorettype = get_pg_proc_rettype(heapTuple) 
       proargnames = get_pg_proc_argnames(heapTuple)
       
-    #Get source code from plnim function 
-    var code = to_pgxcrown(proname, prosrc, pronargs, proargtypes, prorettype, proargnames)
+    try:
+      #Get source code from plnim function 
+      var code = to_pgxcrown(proname, prosrc, pronargs, proargtypes, prorettype, proargnames)
 
-    when defined(linux):
-      var
-        home = getCurrentDir() / ".." / ".." 
-        current_user = home.lastPathPart
-        pgxtool_init_dir = home / current_user & "_pgxtool"
-        pgxtool_bin = execCmdEx("echo $NIMPATH").output.strip
-        load_env = "/bin/bash -c 'export PATH=$PGXTOOL_DIR:$PATH;$command'".replace("$PGXTOOL_DIR", pgxtool_bin)
-    
-      if not dirExists(pgxtool_init_dir):
-        run_command("pgxtool init")
-       
-      var
-        prj_dir   = pgxtool_init_dir & "/$project_name/src" 
-      prj_dir   = prj_dir.replace("$project_name", $proname)
-
-      var main_file = prj_dir / "main.nim"
-      if not fileExists(main_file):
-        run_command("pgxtool create-project $name".replace("$name",$proname))
+      when defined(linux):
+        var
+          home = getCurrentDir() / ".." / ".." 
+          current_user = home.lastPathPart
+          pgxtool_init_dir = home / current_user & "_pgxtool"
+          pgxtool_bin = execCmdEx("echo $NIMPATH").output.strip
+          load_env = "/bin/bash -c 'export PATH=$PGXTOOL_DIR:$PATH;$command'".replace("$PGXTOOL_DIR", pgxtool_bin)
       
-      writeFile(main_file, code)
-      
-      #build extension
-      run_command("pgxtool build-extension $fn".replace("$fn", $proname))
+        if not dirExists(pgxtool_init_dir):
+          run_command("pgxtool init")
+         
+        var
+          prj_dir   = pgxtool_init_dir & "/$project_name/src" 
+        prj_dir   = prj_dir.replace("$project_name", $proname)
 
-    ReleaseSysCache(heapTuple)
-    return cast[Datum](0)
+        var main_file = prj_dir / "main.nim"
+        if not fileExists(main_file):
+          run_command("pgxtool create-project $name".replace("$name",$proname))
+        
+        writeFile(main_file, code)
+        
+        #build extension
+        run_command("pgxtool build-extension $fn".replace("$fn", $proname))
+
+      return cast[Datum](0)
+    finally:
+      ReleaseSysCache(heapTuple)
 
 
 
 proc plnim_call_handler*(fcinfo: FunctionCallInfo): Datum {.pgv1_plnim.} = 
-  
     type pg_proc = proc(a: FunctionCallInfo): Datum {. nimcall .}
     
     var 
@@ -131,29 +139,28 @@ proc plnim_call_handler*(fcinfo: FunctionCallInfo): Datum {.pgv1_plnim.} =
       is_null = false
       proname = get_pg_proc_name(heapTuple)
 
-    when defined(linux):
-      var 
-        libname = "/var/lib/postgresql/postgresql_pgxtool/$prj/src/$lib".replace("$prj", $proname).replace("$lib", $proname) 
-        lib = loadLib(libname)
+    try:
+      when defined(linux):
+        var 
+          libname = "/var/lib/postgresql/postgresql_pgxtool/$prj/src/$lib".replace("$prj", $proname).replace("$lib", $proname) 
+          lib = loadLib(libname)
 
-      if lib == nil:
-        ReleaseSysCache(heapTuple)
-        returnInt32(-404)
-      
-      let nimfn_name = "pgx" & $proname
-      var sym = lib.symAddr(nimfn_name)
+        if lib == nil:
+          returnInt32(-404)
         
-      if sym == nil:
-        ReleaseSysCache(heapTuple)
-        returnInt32(-404)
-       
-      var fn_call = cast[pg_proc](sym)
-      ReleaseSysCache(heapTuple)
-      return fn_call(fcinfo)
+        let nimfn_name = cstring("pgx_" & $proname)
+        var sym = lib.symAddr(nimfn_name)
+          
+        if sym == nil:
+          returnInt32(-404)
+         
+        var fn_call = cast[pg_proc](sym)
+        return fn_call(fcinfo)
 
-    else:
-      ReleaseSysCache(heapTuple)   
-      returnInt32(-404)           
+      else:
+        returnInt32(-404)
+    finally:
+      ReleaseSysCache(heapTuple)           
 
 PG_FUNCTION_INFO_V1(plnim_call_handler)
 PG_FUNCTION_INFO_V1(plnim_validator)
