@@ -42,17 +42,15 @@ Built on top of the [Pgxcrown](https://github.com/luisacosta828/pgxcrown) compil
 
 ---
 
-## 📊 Performance & Architecture Comparison
+## 🏛️ Architectural Design Principles
 
-| Feature / Metric | **PL/Nim (Pgxcrown)** ⚡ | **PL/pgSQL** | **PL/Python** 🐍 | **PL/Rust** 🦀 |
-|---|:---:|:---:|:---:|:---:|
-| **Execution Speed** | **Native C (ORC)** | Interpreted AST (Slow) | Interpreted (CPython/GIL) | Native C / Rust |
-| **JIT Compilation Speed** | **Fast (1 - 2s)** | N/A | N/A | Heavy (10 - 30s `cargo`) |
-| **Memory Management** | **Deterministic ORC** | Memory Context | Garbage Collector / GIL | Borrow Checker |
-| **JSONB & Arrays** | ✅ **Native (`JsonNode`, `seq[T]`)** | ⚠️ Verbose Operators | ✅ Python dicts/lists | ⚠️ Conversion Layers |
-| **Auto Import Hoisting** | ✅ **Yes (Zero-boilerplate)** | N/A | ⚠️ Manual `import` | ⚠️ External crates |
-| **Composite Type Introspection** | ✅ **Auto `CREATE TYPE` mapping** | ⚠️ Strict Record typing | ⚠️ Manual conversion | ⚠️ Manual struct derive |
-| **Crash Protection** | ✅ **Panic Shield (100% Safe)** | ✅ Safe | ⚠️ PyErr Guards required | ✅ Safe |
+PL/Nim is designed from first principles for mission-critical database environments:
+
+* **⚡ Zero-Overhead C Compilation:** Functions are compiled into native shared objects (`.so` / `.dll`) via Nim's C code generator. There is no runtime VM, no bytecode interpreter, and no language server overhead.
+* **🧠 Deterministic ARC/ORC Memory Management:** Memory is allocated and reclaimed deterministically without stop-the-world garbage collector pauses, ensuring predictable microsecond query execution.
+* **⚡ Sub-Second JIT UDF Compilation:** High-speed function compilation allows stored procedures to be defined and updated on-the-fly inside PostgreSQL with minimal turnaround time.
+* **🧬 Deep Catalog Introspection:** Automatically inspects PostgreSQL's catalog to construct native Nim types for composite objects (`CREATE TYPE`), native arrays (`seq[T]`), and JSONB (`JsonNode`) without boilerplate glue code.
+* **🛡️ Panic Shield Isolation:** Built-in exception wrappers catch runtime defects (out-of-bounds access, nil dereferences, overflows) and safely translate them into PostgreSQL transaction rollbacks without crashing backend workers.
 
 ---
 

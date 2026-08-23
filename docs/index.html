@@ -211,73 +211,7 @@ $$ <span class="k">LANGUAGE</span> plnim;
     </div>
   </section>
 
-  <!-- Performance Comparison Section -->
-  <section class="section" id="comparison">
-    <div class="container">
-      <div class="section-header">
-        <h2 class="section-title">Performance & Architecture Comparison</h2>
-        <p class="section-subtitle">How PL/Nim compares to alternative PostgreSQL procedural languages.</p>
-      </div>
 
-      <div class="matrix-table-wrapper">
-        <table class="matrix-table">
-          <thead>
-            <tr>
-              <th>Feature / Metric</th>
-              <th>PL/Nim ⚡</th>
-              <th>PL/pgSQL</th>
-              <th>PL/Python 🐍</th>
-              <th>PL/Rust 🦀</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Execution Speed</strong></td>
-              <td><span class="badge badge-success">Native C (ORC)</span></td>
-              <td>Interpreted AST</td>
-              <td>Interpreted (CPython/GIL)</td>
-              <td><span class="badge badge-success">Native C/Rust</span></td>
-            </tr>
-            <tr>
-              <td><strong>JIT Compilation Speed</strong></td>
-              <td><span class="badge badge-success">Fast (1-2s)</span></td>
-              <td>N/A</td>
-              <td>N/A</td>
-              <td>Heavy (10-30s)</td>
-            </tr>
-            <tr>
-              <td><strong>Memory Footprint</strong></td>
-              <td><span class="badge badge-success">Ultra Low (ORC)</span></td>
-              <td>Low</td>
-              <td>High (VM Overhead)</td>
-              <td>Low</td>
-            </tr>
-            <tr>
-              <td><strong>JSONB & Arrays</strong></td>
-              <td><span class="badge badge-success">Native (JsonNode)</span></td>
-              <td>Verbose Operators</td>
-              <td>Python dict/list</td>
-              <td>Conversion Layer</td>
-            </tr>
-            <tr>
-              <td><strong>Auto Import Hoisting</strong></td>
-              <td><span class="badge badge-success">Yes (Automated)</span></td>
-              <td>N/A</td>
-              <td>Manual import</td>
-              <td>External crates</td>
-            </tr>
-            <tr>
-              <td><strong>Crash Protection</strong></td>
-              <td><span class="badge badge-success">Panic Shield</span></td>
-              <td>Safe</td>
-              <td>PyErr Guards</td>
-              <td>Safe</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
 
   <!-- Core Pillars Section -->
   <section class="section bg-alt" id="features">
