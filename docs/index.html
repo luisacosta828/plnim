@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PL/Nim ⚡ — Native PostgreSQL Procedural Language in Nim</title>
+  <meta name="description" content="Write high-performance, memory-safe, crash-proof PostgreSQL stored procedures and UDFs in Nim. Powered by Pgxcrown with native JSONB, composite types, and auto import hoisting.">
+  
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Background Decorative Glows -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="container nav-container">
+      <a href="#" class="nav-brand">
+        <span class="brand-icon">⚡</span>
+        <span class="gradient-text">PL/Nim</span>
+        <span class="version-badge">v0.5.2</span>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#code-showcase">Interactive Code</a></li>
+        <li><a href="#quickstart">Quick Start</a></li>
+        <li><a href="#matrix">Compatibility</a></li>
+        <li><a href="https://github.com/luisacosta828/plnim" target="_blank" class="github-btn">
+          <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <header class="hero">
+    <div class="container hero-content">
+      <div class="hero-tag">
+        <span class="pulse-dot"></span>
+        PostgreSQL Procedural Language Handler Powered by Pgxcrown 👑
+      </div>
+      <h1 class="hero-title">
+        High-Performance, Crash-Proof <br/>
+        <span class="gradient-text">Nim Functions in PostgreSQL</span>
+      </h1>
+      <p class="hero-subtitle">
+        Write expressive, type-safe, compiled Nim code directly inside <code>CREATE FUNCTION</code>. 
+        Zero interpreter overhead, zero boilerplate composite types, automatic import hoisting, and enterprise panic protection.
+      </p>
+
+      <div class="hero-cta">
+        <a href="#quickstart" class="btn btn-primary">Get Started in 30 Seconds ➔</a>
+        <a href="#code-showcase" class="btn btn-secondary">Explore Live Examples</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Code Showcase Interactive Section -->
+  <section class="section" id="code-showcase">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Pure, Natural Developer Ergonomics</h2>
+        <p class="section-subtitle">No wrapper templates or manual type definitions. PL/Nim auto-discovers PostgreSQL schemas.</p>
+      </div>
+
+      <div class="code-box-wrapper">
+        <div class="code-tabs" id="codeTabs">
+          <button class="code-tab active" data-target="tab-composite">🧬 Composite Types</button>
+          <button class="code-tab" data-target="tab-json">📦 Native JSONB</button>
+          <button class="code-tab" data-target="tab-imports">🧠 Import Hoisting</button>
+          <button class="code-tab" data-target="tab-arrays">📊 Arrays (seq[T])</button>
+          <button class="code-tab" data-target="tab-safety">🛡️ Panic Shield</button>
+        </div>
+
+        <div class="code-content-panel active" id="tab-composite">
+          <div class="code-header">
+            <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+            <span class="code-filename">point_distance.sql</span>
+          </div>
+          <pre><code><span class="k">CREATE TYPE</span> <span class="t">point_2d</span> <span class="k">AS</span> (
+  x <span class="t">float8</span>,
+  y <span class="t">float8</span>
+);
+
+<span class="c">-- Zero boilerplate: point_2d automatically maps to Nim's Point_2d object</span>
+<span class="k">CREATE FUNCTION</span> <span class="fn">point_distance</span>(p1 <span class="t">point_2d</span>, p2 <span class="t">point_2d</span>) <span class="k">RETURNS</span> <span class="t">float8</span> <span class="k">AS</span> $$
+  <span class="k">import</span> std/math
+  <span class="k">let</span> dx = p1.x - p2.x
+  <span class="k">let</span> dy = p1.y - p2.y
+  <span class="k">return</span> sqrt(dx * dx + dy * dy)
+$$ <span class="k">LANGUAGE</span> plnim;
+
+<span class="k">SELECT</span> <span class="fn">point_distance</span>(<span class="fn">ROW</span>(1.0, 2.0)::<span class="t">point_2d</span>, <span class="fn">ROW</span>(4.0, 6.0)::<span class="t">point_2d</span>);
+<span class="c">-- Result: 5.0 (Euclidean distance calculated in native C microsecond speed)</span></code></pre>
+        </div>
+
+        <div class="code-content-panel" id="tab-json">
+          <div class="code-header">
+            <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+            <span class="code-filename">jsonb_telemetry.sql</span>
+          </div>
+          <pre><code><span class="c">-- Native mapping to Nim's JsonNode & std/json constructors</span>
+<span class="k">CREATE FUNCTION</span> <span class="fn">generate_telemetry</span>(server <span class="t">text</span>, cpu <span class="t">float8</span>, mem <span class="t">float8</span>) <span class="k">RETURNS</span> <span class="t">jsonb</span> <span class="k">AS</span> $$
+  <span class="k">return</span> %*{
+    <span class="s">"server"</span>: server,
+    <span class="s">"metrics"</span>: {
+      <span class="s">"cpu_pct"</span>: cpu,
+      <span class="s">"mem_pct"</span>: mem
+    },
+    <span class="s">"status"</span>: <span class="k">if</span> cpu < 80.0: <span class="s">"HEALTHY"</span> <span class="k">else</span>: <span class="s">"ALERT"</span>
+  }
+$$ <span class="k">LANGUAGE</span> plnim;
+
+<span class="k">SELECT</span> <span class="fn">generate_telemetry</span>(<span class="s">'db-master-01'</span>, 45.5, 60.2);
+<span class="c">-- Result: {"server": "db-master-01", "status": "HEALTHY", "metrics": {"cpu_pct": 45.5, "mem_pct": 60.2}}</span></code></pre>
+        </div>
+
+        <div class="code-content-panel" id="tab-imports">
+          <div class="code-header">
+            <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+            <span class="code-filename">import_hoisting.sql</span>
+          </div>
+          <pre><code><span class="c">-- Write imports naturally anywhere inside the SQL function body</span>
+<span class="k">CREATE FUNCTION</span> <span class="fn">format_greeting</span>(raw_name <span class="t">text</span>, angle <span class="t">float8</span>) <span class="k">RETURNS</span> <span class="t">text</span> <span class="k">AS</span> $$
+  <span class="k">import</span> std/math
+  <span class="k">from</span> std/strutils <span class="k">import</span> toUpperAscii
+  
+  <span class="k">let</span> upper = toUpperAscii(raw_name)
+  <span class="k">let</span> sinVal = sin(angle)
+  <span class="k">return</span> upper & <span class="s">" | SIN="</span> & $sinVal
+$$ <span class="k">LANGUAGE</span> plnim;
+
+<span class="k">SELECT</span> <span class="fn">format_greeting</span>(<span class="s">'luis acosta'</span>, 1.5707963);
+<span class="c">-- Result: "LUIS ACOSTA | SIN=1.0"</span></code></pre>
+        </div>
+
+        <div class="code-content-panel" id="tab-arrays">
+          <div class="code-header">
+            <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+            <span class="code-filename">arrays_seq.sql</span>
+          </div>
+          <pre><code><span class="c">-- Native PostgreSQL int[] and text[] map seamlessly to seq[T]</span>
+<span class="k">CREATE FUNCTION</span> <span class="fn">aggregate_scores</span>(scores <span class="t">int[]</span>) <span class="k">RETURNS</span> <span class="t">int</span> <span class="k">AS</span> $$
+  <span class="k">import</span> std/sequtils
+  <span class="k">return</span> foldl(scores, a + b, 0)
+$$ <span class="k">LANGUAGE</span> plnim;
+
+<span class="k">SELECT</span> <span class="fn">aggregate_scores</span>(<span class="k">ARRAY</span>[10, 20, 30, 40, 50]);
+<span class="c">-- Result: 150</span></code></pre>
+        </div>
+
+        <div class="code-content-panel" id="tab-safety">
+          <div class="code-header">
+            <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+            <span class="code-filename">panic_shield.sql</span>
+          </div>
+          <pre><code><span class="c">-- In C extensions, an unhandled exception causes SIGSEGV and crashes PostgreSQL.</span>
+<span class="c">-- PL/Nim's Panic Shield intercepts all Defect exceptions into PostgreSQL ERRORs!</span>
+<span class="k">CREATE FUNCTION</span> <span class="fn">safe_index_lookup</span>(items <span class="t">text[]</span>, idx <span class="t">int</span>) <span class="k">RETURNS</span> <span class="t">text</span> <span class="k">AS</span> $$
+  <span class="k">return</span> items[idx]
+$$ <span class="k">LANGUAGE</span> plnim;
+
+<span class="c">-- Safely reports: ERROR: Extension Defect [IndexDefect]: index out of bounds</span>
+<span class="c">-- The backend process stays alive and healthy!</span></code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Core Pillars Section -->
+  <section class="section bg-alt" id="features">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Built for Performance & Stability</h2>
+        <p class="section-subtitle">A modern procedural language designed from first principles for PostgreSQL.</p>
+      </div>
+
+      <div class="grid grid-3">
+        <div class="card">
+          <div class="card-icon">⚡</div>
+          <h3>Native C Speed</h3>
+          <p>Compiles directly to optimized C shared objects via GCC/Clang with ORC memory management. Zero interpreter overhead.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">🛡️</div>
+          <h3>Crash-Proof Panic Shield</h3>
+          <p>Catches all memory defects, overflows, and out-of-bounds access, safely converting them into PostgreSQL transaction rollbacks.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">🧠</div>
+          <h3>Natural Import Hoisting</h3>
+          <p>Write standard Nim modules (<code>std/math</code>, <code>std/json</code>, <code>std/strutils</code>) inside functions without worrying about module scope.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">🧬</div>
+          <h3>Composite Type Auto-Deduction</h3>
+          <p>Inspects PostgreSQL's catalog to construct Nim <code>object</code> types on the fly for input arguments and return values.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">📦</div>
+          <h3>Native Binary JSONB</h3>
+          <p>Direct interop between PostgreSQL's <code>jsonb</code> and Nim's <code>JsonNode</code> with high-speed JSON manipulation and creation.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">🐳</div>
+          <h3>Multi-Version Ready</h3>
+          <p>Fully compatible and tested across PostgreSQL 13, 14, 15, 16, and 17 on Debian Bullseye and Bookworm.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quickstart Section -->
+  <section class="section" id="quickstart">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Quick Start with Docker</h2>
+        <p class="section-subtitle">Run PostgreSQL with PL/Nim in a single command.</p>
+      </div>
+
+      <div class="quickstart-box">
+        <div class="terminal-header">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span>bash terminal</span>
+        </div>
+        <div class="terminal-body">
+          <p class="cmd-line"><span class="prompt">$</span> git clone https://github.com/luisacosta828/plnim.git</p>
+          <p class="cmd-line"><span class="prompt">$</span> cd plnim</p>
+          <p class="cmd-line"><span class="prompt">$</span> docker-compose -f docker/docker-compose.yml up -d</p>
+          <p class="cmd-comment"># PostgreSQL is now running with PL/Nim enabled on port 5445!</p>
+          <p class="cmd-line"><span class="prompt">$</span> psql -h localhost -p 5445 -U postgres</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Compatibility Matrix Section -->
+  <section class="section bg-alt" id="matrix">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">PostgreSQL Compatibility Matrix</h2>
+        <p class="section-subtitle">Automated validation across all active PostgreSQL releases.</p>
+      </div>
+
+      <div class="matrix-table-wrapper">
+        <table class="matrix-table">
+          <thead>
+            <tr>
+              <th>PostgreSQL Version</th>
+              <th>Base Distro</th>
+              <th>Status</th>
+              <th>CI / Matrix Suite</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>PostgreSQL 17</strong></td>
+              <td>Debian 12 (Bookworm)</td>
+              <td><span class="badge badge-success">Supported</span></td>
+              <td>11/11 Features Passing ✅</td>
+            </tr>
+            <tr>
+              <td><strong>PostgreSQL 16</strong></td>
+              <td>Debian 12 (Bookworm)</td>
+              <td><span class="badge badge-success">Supported</span></td>
+              <td>11/11 Features Passing ✅</td>
+            </tr>
+            <tr>
+              <td><strong>PostgreSQL 15</strong></td>
+              <td>Debian 11 (Bullseye)</td>
+              <td><span class="badge badge-success">Supported</span></td>
+              <td>11/11 Features Passing ✅</td>
+            </tr>
+            <tr>
+              <td><strong>PostgreSQL 14</strong></td>
+              <td>Debian 11 (Bullseye)</td>
+              <td><span class="badge badge-success">Supported</span></td>
+              <td>11/11 Features Passing ✅</td>
+            </tr>
+            <tr>
+              <td><strong>PostgreSQL 13</strong></td>
+              <td>Debian 11 (Bullseye)</td>
+              <td><span class="badge badge-success">Supported</span></td>
+              <td>11/11 Features Passing ✅</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-content">
+      <p>PL/Nim is open-source software licensed under the <a href="https://opensource.org/licenses/MIT" target="_blank">MIT License</a>.</p>
+      <p>Created with ⚡ by <a href="https://github.com/luisacosta828" target="_blank">Luis Acosta</a>. Powered by <a href="https://github.com/luisacosta828/pgxcrown" target="_blank">Pgxcrown 👑</a>.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

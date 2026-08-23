@@ -4,7 +4,7 @@
 # Supports PostgreSQL 13, 14, 15, 16, 17
 # =============================================================================
 ARG PG_VERSION=15
-FROM postgres:${PG_VERSION}-bullseye
+FROM postgres:${PG_VERSION}
 
 LABEL maintainer="Luis Acosta <luisacosta828@gmail.com>"
 LABEL description="PostgreSQL image with native PL/Nim procedural language support"
