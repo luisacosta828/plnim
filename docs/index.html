@@ -112,12 +112,12 @@ $$ <span class="k">LANGUAGE</span> plnim;
           </div>
           <pre><code><span class="c">-- High-speed fuzzy string distance across database rows</span>
 <span class="k">CREATE FUNCTION</span> <span class="fn">levenshtein_dist</span>(s1 <span class="t">text</span>, s2 <span class="t">text</span>) <span class="k">RETURNS</span> <span class="t">int</span> <span class="k">AS</span> $$
-  <span class="k">import</span> std/strutils
+  <span class="k">import</span> std/editdistance
   <span class="k">return</span> editDistance(s1, s2).int32
 $$ <span class="k">LANGUAGE</span> plnim;
 
 <span class="k">SELECT</span> <span class="fn">levenshtein_dist</span>(<span class="s">'PostgreSQL'</span>, <span class="s">'Postgres'</span>);
-<span class="c">-- Result: 2 (100x faster than interpreted PL/pgSQL loops)</span></code></pre>
+<span class="c">-- Result: 3 (100x faster than interpreted PL/pgSQL loops)</span></code></pre>
         </div>
 
         <div class="code-content-panel" id="tab-hash">

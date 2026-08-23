@@ -108,12 +108,12 @@ Execute string distance algorithms at bare-metal speed across thousands of rows:
 
 ```sql
 CREATE FUNCTION levenshtein_dist(s1 text, s2 text) RETURNS int AS $$
-  import std/strutils
+  import std/editdistance
   return editDistance(s1, s2).int32
 $$ LANGUAGE plnim;
 
 SELECT levenshtein_dist('PostgreSQL', 'Postgres');
--- Output: 2
+-- Output: 3
 ```
 
 ---
