@@ -11,25 +11,6 @@
 [![Core Engine](https://img.shields.io/badge/Powered%20By-Pgxcrown%20👑-00E599)](https://github.com/luisacosta828/pgxcrown)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Memory Safety](https://img.shields.io/badge/Safety-Panic%20Shield-success)](#-panic-shield--exception-safety)
-
-<br/>
-
-```sql
--- AI & Vector Embeddings: Calculate Cosine Similarity at native C speed
-CREATE FUNCTION cosine_similarity(v1 float8[], v2 float8[]) RETURNS float8 AS $$
-  import std/math
-  var dotProduct = 0.0
-  var normA = 0.0
-  var normB = 0.0
-  for i in 0 ..< min(v1.len, v2.len):
-    dotProduct += v1[i] * v2[i]
-    normA += v1[i] * v1[i]
-    normB += v2[i] * v2[i]
-  let denominator = sqrt(normA) * sqrt(normB)
-  return if denominator == 0.0: 0.0 else: dotProduct / denominator
-$$ LANGUAGE plnim;
-```
-
 </div>
 
 ---
