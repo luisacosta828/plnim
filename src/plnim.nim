@@ -1,11 +1,10 @@
 import pgxcrown
-import pgxcrown/datatypes/basic
+import pgxcrown/datatypes/[basic, heaptuples]
 import pgxcrown/catalog/[pg_proc, pg_type]
 import pgxcrown/syscache
-import pgxcrown/spi
 import dynlib
 import std/[strutils, sequtils]
-import os, osproc
+import os
 
 PG_MODULE_MAGIC
 
@@ -18,63 +17,129 @@ proc translate_pg_types_to_nim(typ: string): string {.inline.} =
   of "float8": "float64"
   of "text", "varchar": "string"
   of "bool", "boolean": "bool"
+  of "json", "jsonb": "JsonNode"
   of "_int4", "int4[]": "seq[int32]"
   of "_int8", "int8[]": "seq[int64]"
   of "_float8", "float8[]": "seq[float64]"
   of "_text", "text[]": "seq[string]"
   of "_bool", "bool[]": "seq[bool]"
+  of "_json", "json[]", "_jsonb", "jsonb[]": "seq[JsonNode]"
   else: typ.capitalizeAscii
 
 
-proc extract(content, l1, l2: string): (string, string) =
-  if l1 notin content or l2 notin content:
-    return ("", content)
-  let l1_pos = content.find(l1)
-  let l2_pos = content.find(l2)
-  if l1_pos < 0 or l2_pos < 0 or l2_pos <= l1_pos:
-    return ("", content)
+proc extract_imports_and_body(prosrc: string): (string, string) =
+  var imports: seq[string] = @[]
+  var raw_body_lines: seq[string] = @[]
 
-  let typeStart = l1_pos + l1.len + 1
-  let typeEnd = l2_pos - 1
-  let bodyStart = l2_pos + l2.len + 1
+  for line in prosrc.splitLines():
+    let trimmed = line.strip()
+    if trimmed.startsWith("import ") or trimmed.startsWith("from "):
+      imports.add trimmed
+    else:
+      raw_body_lines.add line
 
-  var type_section = ""
-  var body_section = ""
+  while raw_body_lines.len > 0 and raw_body_lines[0].strip().len == 0:
+    raw_body_lines.delete(0)
+  while raw_body_lines.len > 0 and raw_body_lines[^1].strip().len == 0:
+    raw_body_lines.delete(raw_body_lines.len - 1)
 
-  if typeStart <= typeEnd and typeEnd < content.len:
-    type_section = content[typeStart .. typeEnd]
+  var minIndent = int.high
+  for line in raw_body_lines:
+    if line.strip().len > 0:
+      var indent = 0
+      for c in line:
+        if c == ' ': indent += 1
+        elif c == '\t': indent += 2
+        else: break
+      if indent < minIndent:
+        minIndent = indent
+  if minIndent == int.high: minIndent = 0
 
-  if bodyStart < content.len:
-    body_section = content[bodyStart .. ^1]
+  var formatted_body: seq[string] = @[]
+  for line in raw_body_lines:
+    if line.strip().len == 0:
+      formatted_body.add ""
+    else:
+      let stripped = if line.len >= minIndent: line[minIndent .. ^1] else: line.strip()
+      formatted_body.add "  " & stripped
 
-  return (type_section, body_section)
+  return (imports.join("\n"), formatted_body.join("\n"))
 
-proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, proargtypes: ptr Oid, prorettype: Oid, proargnames: seq[string]): string =
+
+proc generate_composite_type_def*(type_oid: Oid, nim_type_name: string): string =
+  var tupdesc = lookup_rowtype_tupdesc_noerror(type_oid, -1, true)
+  if tupdesc.isNil:
+    return ""
+  
+  var fields: seq[string] = @[]
+  var is_null = false
+  for i in 0 ..< int(cast[TupleDescStruct](tupdesc).natts):
+    var attr = TupleDescAttr(tupdesc, i.cint)
+    if not attr.attisdropped:
+      var field_name = $NameStr(attr.attname)
+      var field_oid = attr.atttypid
+      var type_tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(field_oid))
+      if not type_tuple.isNil:
+        var pg_name = get_pg_type_name(type_tuple)
+        ReleaseSysCache(type_tuple)
+        var field_nim_type = translate_pg_types_to_nim($pg_name)
+        fields.add "  " & field_name & "*: " & field_nim_type
+
+  DecrTupleDescRefCount(tupdesc)
+
+  if fields.len > 0:
+    return "type " & nim_type_name & "* = object\n" & fields.join("\n") & "\n"
+  return ""
+
+
+proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, heapTuple: spi.HeapTuple, prorettype: Oid, proargnames: seq[string]): string =
   var 
-    plnim_args:seq[cstring]
+    plnim_args: seq[string] = @[]
     is_null = false
-    rettype_tuple =  SearchSysCache1(TYPEOID, ObjectIdGetDatum(prorettype))
-    plnim_rettype = get_pg_type_name(rettype_tuple)
+    rettype_tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(prorettype))
+    plnim_rettype = if not rettype_tuple.isNil:
+      let n = $get_pg_type_name(rettype_tuple)
+      ReleaseSysCache(rettype_tuple)
+      n
+    else: "void"
+    ret_nim_type = translate_pg_types_to_nim(plnim_rettype)
 
-  ReleaseSysCache(rettype_tuple) 
+  var generated_types: seq[string] = @[]
+  var type_defs: seq[string] = @[]
 
-  for n in 0 ..< pronargs:
+  proc collect_composite_type(type_oid: Oid, nim_type: string) =
+    if nim_type notin generated_types and not nim_type.startsWith("seq[") and nim_type notin ["int16", "int32", "int64", "float32", "float64", "string", "bool", "JsonNode"]:
+      let def = generate_composite_type_def(type_oid, nim_type)
+      if def.len > 0:
+        generated_types.add nim_type
+        type_defs.add def
+
+  # 1. Collect return composite type
+  collect_composite_type(prorettype, ret_nim_type)
+
+  # 2. Collect arguments and their composite types
+  for n in 0 ..< int(pronargs):
     var 
-      oid_value    = (proargtypes + n).asOid
+      oid_value    = get_pg_proc_arg_oid(heapTuple, n)
       type_tuple   = SearchSysCache1(TYPEOID, ObjectIdGetDatum(oid_value))
+      arg_pg_name  = if not type_tuple.isNil:
+        let n = $get_pg_type_name(type_tuple)
+        ReleaseSysCache(type_tuple)
+        n
+      else: "unknown"
+      arg_nim_type = translate_pg_types_to_nim(arg_pg_name)
     
-    plnim_args.add get_pg_type_name(type_tuple)
-    ReleaseSysCache(type_tuple)
+    plnim_args.add arg_nim_type
+    collect_composite_type(oid_value, arg_nim_type)
 
-  if len(plnim_args) == pronargs:
+  if len(plnim_args) == int(pronargs):
     var proc_template = """
+$import_def
 $type_def
 proc $proc_name($args): $ret_type =
 $body
 """
-    var args:seq[string]
-    var type_def = ""
-    var body = ""
+    var args: seq[string]
 
     # Generate positional parameter names (arg0, arg1, ...) if unnamed
     var effectiveArgNames: seq[string] = @[]
@@ -85,12 +150,26 @@ $body
         effectiveArgNames.add "arg" & $i
 
     for arg in zip(effectiveArgNames, plnim_args):
-      var nim_type = translate_pg_types_to_nim($arg[1])
-      args.add arg[0] & ": " & nim_type
+      args.add arg[0] & ": " & arg[1]
 
-    (type_def, body) = extract($prosrc, "[type section]", "[end type section]")
-    result = proc_template.multireplace([("$type_def", type_def), ("$proc_name", $proname), ("$ret_type", translate_pg_types_to_nim($plnim_rettype)), ("$body", body), ("$args", args.join(", "))])
-   
+    let (import_def, body) = extract_imports_and_body($prosrc)
+
+    var allImports: seq[string] = @[]
+    if import_def.len > 0:
+      allImports.add import_def
+
+    if not import_def.contains("std/json") and not import_def.contains("json"):
+      allImports.add "import std/json"
+
+    result = proc_template.multireplace([
+      ("$import_def", allImports.join("\n")),
+      ("$type_def", type_defs.join("\n")),
+      ("$proc_name", $proname),
+      ("$ret_type", ret_nim_type),
+      ("$body", body),
+      ("$args", args.join(", "))
+    ])
+
 
 proc is_safe_identifier(name: string): bool =
   if name.len == 0 or name.len > 63: return false
@@ -100,6 +179,54 @@ proc is_safe_identifier(name: string): bool =
     elif c notin {'a'..'z', 'A'..'Z', '0'..'9', '_'}:
       return false
   return true
+
+# =============================================================================
+# Dynamic Path Resolution Helpers
+# =============================================================================
+
+proc getPgxtoolInitDir*(): string =
+  let envDir = getEnv("PGXTOOL_INIT_DIR")
+  if envDir.len > 0:
+    return envDir
+  let home = getHomeDir()
+  let user = if home.len > 0 and home.lastPathPart.len > 0: home.lastPathPart else: "postgres"
+  return home / (user & "_pgxtool")
+
+proc getPgxtoolBin*(): string =
+  let envBin = getEnv("PGXTOOL_BIN")
+  if envBin.len > 0 and fileExists(envBin):
+    return envBin
+  let exeInPath = findExe("pgxtool")
+  if exeInPath.len > 0:
+    return exeInPath
+  let nimpath = getEnv("NIMPATH")
+  if nimpath.len > 0:
+    if fileExists(nimpath / "bin" / "pgxtool"):
+      return nimpath / "bin" / "pgxtool"
+    if fileExists(nimpath / "pgxtool"):
+      return nimpath / "pgxtool"
+  let homeNimble = getHomeDir() / ".nimble" / "bin" / "pgxtool"
+  if fileExists(homeNimble):
+    return homeNimble
+  if fileExists("/usr/local/bin/pgxtool"):
+    return "/usr/local/bin/pgxtool"
+  if fileExists("/usr/bin/pgxtool"):
+    return "/usr/bin/pgxtool"
+  return "pgxtool"
+
+proc getFunctionLibPath*(proname: string): string =
+  let prjDir = getPgxtoolInitDir() / proname / "src"
+  const ext = when defined(windows): ".dll" elif defined(macosx): ".dylib" else: ".so"
+  let standardLib = prjDir / (proname & ext)
+  if fileExists(standardLib):
+    return standardLib
+  let libPrefix = prjDir / ("lib" & proname & ext)
+  if fileExists(libPrefix):
+    return libPrefix
+  let plain = prjDir / proname
+  if fileExists(plain):
+    return plain
+  return standardLib
 
 
 proc plnim_validator*(): Datum {. pgv1 .} =
@@ -121,37 +248,43 @@ proc plnim_validator*(): Datum {. pgv1 .} =
         reportError("PL/Nim Security Error: Function name '" & $proname & "' contains invalid characters or exceeds 63 characters. Only letters, numbers, and underscores are permitted.")
 
       # Get source code from plnim function 
-      var code = to_pgxcrown(proname, prosrc, pronargs, proargtypes, prorettype, proargnames)
+      var code = to_pgxcrown(proname, prosrc, pronargs, heapTuple, prorettype, proargnames)
 
-      when defined(linux):
-        var
-          home = getCurrentDir() / ".." / ".." 
-          current_user = home.lastPathPart
-          pgxtool_init_dir = home / current_user & "_pgxtool"
-          pgxtool_bin = execCmdEx("echo $NIMPATH").output.strip
-          load_env = "/bin/bash -c 'export PATH=$PGXTOOL_DIR:$PATH;$command'".replace("$PGXTOOL_DIR", pgxtool_bin)
+      when defined(linux) or defined(macosx) or defined(windows):
+        let initDir = getPgxtoolInitDir()
+        let pgxtoolBin = getPgxtoolBin()
+        let pgxtoolParent = if pgxtoolBin.contains(DirSep): pgxtoolBin.parentDir() else: ""
+        let nimpath = getEnv("NIMPATH")
+        var pathEntries: seq[string] = @[]
+        if pgxtoolParent.len > 0: pathEntries.add pgxtoolParent
+        if nimpath.len > 0:
+          pathEntries.add nimpath
+          pathEntries.add nimpath / "bin"
+        pathEntries.add getHomeDir() / ".nimble" / "bin"
+        pathEntries.add "/usr/local/bin"
+        pathEntries.add "/usr/bin"
+
+        let extraPath = pathEntries.join(":")
+        let loadEnv = "/bin/bash -c 'export PATH=" & extraPath & ":$PATH; $command'"
       
         proc run_command(command: string) =
-          let cmd = load_env.replace("$command", command)
+          let cmd = loadEnv.replace("$command", command)
           let exitCode = execShellCmd(cmd)
           if exitCode != 0:
             reportError("PL/Nim Build Error: Command '" & command & "' for function '" & $proname & "' failed with exit code " & $exitCode & ".")
 
-        if not dirExists(pgxtool_init_dir):
+        if not dirExists(initDir):
           run_command("pgxtool init")
          
-        var
-          prj_dir   = pgxtool_init_dir & "/$project_name/src" 
-        prj_dir   = prj_dir.replace("$project_name", $proname)
-
-        var main_file = prj_dir / "main.nim"
-        if not fileExists(main_file):
-          run_command("pgxtool create-project $name".replace("$name",$proname))
+        let prjDir = initDir / $proname / "src"
+        let mainFile = prjDir / "main.nim"
+        if not fileExists(mainFile):
+          run_command("pgxtool create-project " & $proname)
         
-        writeFile(main_file, code)
+        writeFile(mainFile, code)
         
         # build extension & validate exit code
-        run_command("pgxtool build-extension $fn".replace("$fn", $proname))
+        run_command("pgxtool build-extension " & $proname)
 
       return cast[Datum](0)
     finally:
@@ -169,10 +302,9 @@ proc plnim_call_handler*(fcinfo: FunctionCallInfo): Datum {.pgv1_plnim.} =
       proname = get_pg_proc_name(heapTuple)
 
     try:
-      when defined(linux):
-        var 
-          libname = "/var/lib/postgresql/postgresql_pgxtool/$prj/src/$lib".replace("$prj", $proname).replace("$lib", $proname) 
-          lib = loadLib(libname)
+      when defined(linux) or defined(macosx) or defined(windows):
+        let libname = getFunctionLibPath($proname)
+        let lib = loadLib(libname)
 
         if lib == nil:
           reportError("PL/Nim Execution Error: Dynamic library for function '" & $proname & "' could not be loaded from path '" & libname & "'. Please verify 'pgxtool build-extension " & $proname & "' executed successfully.")
@@ -187,10 +319,9 @@ proc plnim_call_handler*(fcinfo: FunctionCallInfo): Datum {.pgv1_plnim.} =
         return fn_call(fcinfo)
 
       else:
-        reportError("PL/Nim Execution Error: PL/Nim dynamic execution is currently only supported on Linux platforms.")
+        reportError("PL/Nim Execution Error: PL/Nim dynamic execution is not supported on this platform.")
     finally:
-      ReleaseSysCache(heapTuple)           
+      ReleaseSysCache(heapTuple)
 
 PG_FUNCTION_INFO_V1(plnim_call_handler)
 PG_FUNCTION_INFO_V1(plnim_validator)
-

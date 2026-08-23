@@ -1,35 +1,88 @@
+# =============================================================================
+# PostgreSQL 15 with PL/Nim (Nim Procedural Language Handler)
+# Powered by Pgxcrown
+# =============================================================================
 FROM postgres:15-bullseye
+
+LABEL maintainer="Luis Acosta <luisacosta828@gmail.com>"
+LABEL description="PostgreSQL 15 image with native PL/Nim procedural language support"
 
 SHELL ["/bin/bash", "-c"]
 
-# Installing postgresql and nim dependencies
+# -----------------------------------------------------------------------------
+# 1. System Build Dependencies & PostgreSQL Development Headers
+# -----------------------------------------------------------------------------
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential gcc postgresql-contrib libpq5 libpq-dev postgresql-server-dev-15 wget xz-utils g++ git mercurial libssl-dev nano vim; wget -qO- https://deb.nodesource.com/setup_13.x | bash -;     apt-get install -y nodejs
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        postgresql-contrib \
+        libpq-dev \
+        postgresql-server-dev-15 \
+        wget \
+        xz-utils \
+        git \
+        libssl-dev \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-ENV PG_HOME /var/lib/postgresql
+# -----------------------------------------------------------------------------
+# 2. Install Official Nim Compiler (v2.2.4)
+# -----------------------------------------------------------------------------
+RUN wget -q https://nim-lang.org/download/nim-2.2.4-linux_x64.tar.xz && \
+    mkdir -p /opt && \
+    tar -xf nim-2.2.4-linux_x64.tar.xz -C /opt && \
+    mv /opt/nim-2.2.4 /opt/nim && \
+    rm nim-2.2.4-linux_x64.tar.xz && \
+    ln -sf /opt/nim/bin/nim /usr/local/bin/nim && \
+    ln -sf /opt/nim/bin/nimble /usr/local/bin/nimble
 
-# Installing nim 
-RUN su - postgres -c "wget https://nim-lang.org/download/nim-2.2.4.tar.xz; tar xf nim-2.2.4.tar.xz; rm nim-2.2.4.tar.xz;  mv nim-2.2.4 nim; cd nim; sh build.sh; rm -r c_code tests; bin/nim c koch; ./koch tools"
-RUN ln -s $PG_HOME/nim/bin/nim /usr/local/bin/nim; ln -s $PG_HOME/nim/bin/nimble /usr/local/bin/nimble
+# Set global PATH and pgxtool environment variables
+ENV PATH="/opt/nim/bin:/var/lib/postgresql/.nimble/bin:/usr/local/bin:${PATH}"
+ENV PGXTOOL_BIN="/usr/local/bin/pgxtool"
+ENV PGXTOOL_INIT_DIR="/var/lib/postgresql/postgresql_pgxtool"
 
-# Downloading and configuring pgxcrown and plnim 
-RUN chown postgres $(pg_config --pkglibdir)
-RUN su - postgres -c "nimble install pgxcrown; nimble develop plnim; cd plnim; nimble install -y; cp plnim.so $(pg_config --pkglibdir)"
-RUN ln -s $PG_HOME/.nimble/bin/pgxtool /usr/local/bin/pgxtool
+# Configure git safe directory globally for all users
+RUN git config --system --add safe.directory "*"
 
-# Preparing required ENV variables
-RUN su - postgres -c "pg_createcluster 15 main"
-RUN su - postgres -c "echo -n 'export PATH=$PG_HOME/.nimble:$PATH' >> $PG_HOME/.bashrc"
-RUN su - postgres -c "echo -n '[ -f "$PG_HOME/.bashrc" ] && source $PG_HOME/.bashrc' >> $PG_HOME/.bash_profile"
-RUN echo 'host all all 0.0.0.0/0 trust' >> /etc/postgresql/15/main/pg_hba.conf
-RUN echo -n "NIMPATH = '$PG_HOME/.nimble'" >> /etc/postgresql/15/main/environment
+# -----------------------------------------------------------------------------
+# 3. Install latest Pgxcrown Core & Global pgxtool CLI
+# -----------------------------------------------------------------------------
+USER postgres
+ENV HOME=/var/lib/postgresql
+RUN git config --global --add safe.directory "*" && \
+    nimble install -y https://github.com/luisacosta828/pgxcrown.git
 
-# Configure nimblepath and nimcache 
-RUN sed -i 's|^nimblepath="$home/\.nimble/pkgs2/"|nimblepath="/var/lib/postgresql/\.nimble/pkgs2/"|' $PG_HOME/nim/config/nim.cfg && \
-    sed -i 's|^nimblepath="$home/\.nimble/pkgs/"|nimblepath="/var/lib/postgresql/\.nimble/pkgs/"|' $PG_HOME/nim/config/nim.cfg && \
-    sed -i '/@if release or danger:/c\@if release or danger:\n  nimcache: "/var/lib/postgresql/cache"' $PG_HOME/nim/config/nim.cfg
+USER root
+RUN ln -sf /var/lib/postgresql/.nimble/bin/pgxtool /usr/local/bin/pgxtool
 
-# Starting postgresql service and loading plnim extension
-RUN service postgresql start; su - postgres -c "psql -f plnim/src/plnim/sql/extension.sql"
+# -----------------------------------------------------------------------------
+# 4. Build & Install PL/Nim Extension Library
+# -----------------------------------------------------------------------------
+WORKDIR /tmp/plnim_build
+COPY --chown=postgres:postgres . .
 
-CMD ["postgres"]
+USER postgres
+RUN nim c --hints:off -d:release --app:lib -o:plnim.so src/plnim.nim && \
+    nimble install -y
+
+USER root
+# Install plnim.so into PostgreSQL shared libraries directory
+RUN cp plnim.so $(pg_config --pkglibdir)/
+
+# Register plnim extension automatically on container initialization
+RUN mkdir -p /docker-entrypoint-initdb.d && \
+    cp src/plnim/sql/extension.sql /docker-entrypoint-initdb.d/01_plnim.sql && \
+    rm -rf /tmp/plnim_build
+
+# -----------------------------------------------------------------------------
+# 5. Runtime Workspace Setup for PostgreSQL user
+# -----------------------------------------------------------------------------
+RUN mkdir -p /var/lib/postgresql/postgresql_pgxtool && \
+    chown -R postgres:postgres /var/lib/postgresql
+
+USER postgres
+WORKDIR /var/lib/postgresql
+
+# Default PostgreSQL port
+EXPOSE 5432
