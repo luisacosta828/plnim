@@ -273,7 +273,7 @@ proc plnim_validator*(): Datum {. pgv1 .} =
           if exitCode != 0:
             reportError("PL/Nim Build Error: Command '" & command & "' for function '" & $proname & "' failed with exit code " & $exitCode & ".")
 
-        if not dirExists(initDir):
+        if not fileExists(initDir / "config.json"):
           run_command("pgxtool init")
          
         let prjDir = initDir / $proname / "src"

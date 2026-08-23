@@ -1,24 +1,27 @@
 # =============================================================================
-# PostgreSQL 15 with PL/Nim (Nim Procedural Language Handler)
+# PostgreSQL with PL/Nim (Nim Procedural Language Handler)
 # Powered by Pgxcrown
+# Supports PostgreSQL 13, 14, 15, 16, 17
 # =============================================================================
-FROM postgres:15-bullseye
+ARG PG_VERSION=15
+FROM postgres:${PG_VERSION}-bullseye
 
 LABEL maintainer="Luis Acosta <luisacosta828@gmail.com>"
-LABEL description="PostgreSQL 15 image with native PL/Nim procedural language support"
+LABEL description="PostgreSQL image with native PL/Nim procedural language support"
 
 SHELL ["/bin/bash", "-c"]
 
 # -----------------------------------------------------------------------------
-# 1. System Build Dependencies & PostgreSQL Development Headers
+# 1. System Build Dependencies & PostgreSQL Development Headers (Dynamic Version)
 # -----------------------------------------------------------------------------
 RUN apt-get update && \
+    PG_MAJOR=$(pg_config --version | awk '{print $2}' | cut -d. -f1) && \
     apt-get install -y --no-install-recommends \
         build-essential \
         gcc \
         postgresql-contrib \
         libpq-dev \
-        postgresql-server-dev-15 \
+        postgresql-server-dev-${PG_MAJOR} \
         wget \
         xz-utils \
         git \
@@ -78,11 +81,9 @@ RUN mkdir -p /docker-entrypoint-initdb.d && \
 # -----------------------------------------------------------------------------
 # 5. Runtime Workspace Setup for PostgreSQL user
 # -----------------------------------------------------------------------------
-RUN mkdir -p /var/lib/postgresql/postgresql_pgxtool && \
-    chown -R postgres:postgres /var/lib/postgresql
-
 USER postgres
 WORKDIR /var/lib/postgresql
+RUN pgxtool init
 
 # Default PostgreSQL port
 EXPOSE 5432
