@@ -126,7 +126,7 @@ $$ <span class="k">LANGUAGE</span> plnim;
             <span class="code-filename">fast_hash.sql</span>
           </div>
           <pre><code><span class="c">-- Compute 64-bit token hash using Nim's std/hashes library</span>
-<span class="k">CREATE FUNCTION</span> <span class="fn">fast_hash</span>(key <span class="t">text</span>) <span class="k">RETURNS</span> <span class="t">int64</span> <span class="k">AS</span> $$
+<span class="k">CREATE FUNCTION</span> <span class="fn">fast_hash</span>(key <span class="t">text</span>) <span class="k">RETURNS</span> <span class="t">bigint</span> <span class="k">AS</span> $$
   <span class="k">import</span> std/hashes
   <span class="k">return</span> hash(key).int64
 $$ <span class="k">LANGUAGE</span> plnim;

@@ -141,7 +141,7 @@ SELECT levenshtein_dist('PostgreSQL', 'Postgres');
 Perform fast 64-bit hashing using Nim's standard library:
 
 ```sql
-CREATE FUNCTION fast_hash(key text) RETURNS int64 AS $$
+CREATE FUNCTION fast_hash(key text) RETURNS bigint AS $$
   import std/hashes
   return hash(key).int64
 $$ LANGUAGE plnim;
