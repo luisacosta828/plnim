@@ -276,7 +276,7 @@ PL/Nim includes an automated test runner validating all 11 core feature suites a
 * [x] **Composite Types (Input & Output `CREATE TYPE`)**
 * [x] **Native `JSON` & `JSONB` via `JsonNode`**
 * [x] **Multi-Version Matrix (PostgreSQL 13 - 17)**
-* [ ] **In-Memory Handle Cache in `plnim_call_handler`** (Microsecond dispatch)
+* [x] **In-Memory Handle Cache in `plnim_call_handler`** (Microsecond dispatch)
 * [ ] **Set-Returning Functions (`RETURNS SETOF` / `RETURNS TABLE`)**
 * [ ] **Embedded SPI Query Engine**
 

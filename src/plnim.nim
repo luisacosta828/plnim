@@ -314,12 +314,12 @@ proc plnim_call_handler*(fcinfo: FunctionCallInfo): Datum {.pgv1_plnim.} =
     
     let fn_oid = getFnOid(fcinfo)
 
-    # ⚡ FAST PATH: In-memory cache hit (~5-10 ns dispatch, zero I/O, zero syscache)
+    # Fast path: In-memory cache hit (direct dispatch, zero I/O, zero syscache)
     if gFunctionCache.hasKey(fn_oid):
       let cached = gFunctionCache[fn_oid]
       return cached.fn_call(fcinfo)
 
-    # 🐢 COLD START PATH: First execution only (Cache Miss)
+    # Cold start path: First execution only (Cache miss)
     var heapTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(fn_oid)) 
     if heapTuple == nil:
       reportError("PL/Nim Execution Error: Function OID " & $fn_oid & " not found in syscache.")
