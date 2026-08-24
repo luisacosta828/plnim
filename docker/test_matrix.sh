@@ -168,10 +168,31 @@ for V in $VERSIONS; do
     $$ LANGUAGE plnim;
 
     SELECT fn_feat11_safe_division(10.0, 2.0) AS "Feature 11 (Safe Div)", fn_feat11_safe_division(10.0, 0.0) AS "Feature 11 (Zero Div Guard)";
+
+    -- -------------------------------------------------------------------------
+    -- FEATURE 12: Set-Returning Scalar Functions (RETURNS SETOF text)
+    -- -------------------------------------------------------------------------
+    CREATE FUNCTION fn_feat12_list_fruits() RETURNS SETOF text AS $$
+      return @["Apple", "Banana", "Cherry", "Dragonfruit"]
+    $$ LANGUAGE plnim;
+
+    SELECT * FROM fn_feat12_list_fruits();
+
+    -- -------------------------------------------------------------------------
+    -- FEATURE 13: Set-Returning Composite Functions (RETURNS SETOF composite_type)
+    -- -------------------------------------------------------------------------
+    CREATE FUNCTION fn_feat13_generate_grid(n int) RETURNS SETOF geo_point AS $$
+      var res: seq[Geo_point] = @[]
+      for i in 1 .. n:
+        res.add(Geo_point(x: i.float64, y: (i * 2).float64))
+      return res
+    $$ LANGUAGE plnim;
+
+    SELECT * FROM fn_feat13_generate_grid(3);
 EOSQL
 
   echo ""
-  echo "✅ [PostgreSQL $V] ALL 11 FEATURES PASSED 100% SUCCESSFULLY!"
+  echo "✅ [PostgreSQL $V] ALL 13 FEATURES PASSED 100% SUCCESSFULLY!"
   docker rm -f "${CONTAINER}" >/dev/null 2>&1
 done
 

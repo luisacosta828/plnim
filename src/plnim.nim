@@ -99,8 +99,16 @@ proc generate_composite_type_def*(type_oid: Oid, nim_type_name: string): string 
   return ""
 
 
+const Anum_pg_proc_proretset {.importc: "Anum_pg_proc_proretset", nodecl.}: cuint = 14
+
+template get_pg_proc_retset*(ttuple: typed): bool =
+  var is_null = false
+  var datum = SysCacheGetAttr(PROCOID, ttuple, Anum_pg_proc_proretset, addr(is_null))
+  (cast[uint](datum) != 0)
+
 proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, heapTuple: spi.HeapTuple, prorettype: Oid, proargnames: seq[string]): string =
   var 
+    proretset = get_pg_proc_retset(heapTuple)
     plnim_args: seq[string] = @[]
     is_null = false
     rettype_tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(prorettype))
@@ -109,7 +117,11 @@ proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, heapTuple: 
       ReleaseSysCache(rettype_tuple)
       n
     else: "void"
-    ret_nim_type = translate_pg_types_to_nim(plnim_rettype)
+    base_ret_nim_type = translate_pg_types_to_nim(plnim_rettype)
+    ret_nim_type = if proretset and not base_ret_nim_type.startsWith("seq["):
+      "seq[" & base_ret_nim_type & "]"
+    else:
+      base_ret_nim_type
 
   var generated_types: seq[string] = @[]
   var type_defs: seq[string] = @[]
@@ -122,7 +134,7 @@ proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, heapTuple: 
         type_defs.add def
 
   # 1. Collect return composite type
-  collect_composite_type(prorettype, ret_nim_type)
+  collect_composite_type(prorettype, base_ret_nim_type)
 
   # 2. Collect arguments and their composite types
   for n in 0 ..< int(pronargs):

@@ -212,6 +212,41 @@ SELECT sum_numbers(ARRAY[10, 20, 30, 40, 50]);
 
 ---
 
+### 7. Set-Returning Functions (`RETURNS SETOF`)
+Return multiple rows or tables from Nim sequences:
+
+```sql
+-- Primitive Set-Returning Function
+CREATE FUNCTION list_fruits() RETURNS SETOF text AS $$
+  return @["Apple", "Banana", "Cherry", "Dragonfruit"]
+$$ LANGUAGE plnim;
+
+SELECT * FROM list_fruits();
+-- Output:
+--  Apple
+--  Banana
+--  Cherry
+--  Dragonfruit
+
+-- Composite Set-Returning Function
+CREATE FUNCTION generate_grid(n int) RETURNS SETOF geo_point AS $$
+  var res: seq[Geo_point] = @[]
+  for i in 1 .. n:
+    res.add(Geo_point(x: i.float64, y: (i * 2).float64))
+  return res
+$$ LANGUAGE plnim;
+
+SELECT * FROM generate_grid(3);
+-- Output:
+--  x | y
+-- ---+---
+--  1 | 2
+--  2 | 4
+--  3 | 6
+```
+
+---
+
 ## 🛡️ Panic Shield & Exception Safety
 
 Unlike traditional C extensions where segmentation faults or uncaught exceptions crash the entire PostgreSQL server backend, PL/Nim uses **Pgxcrown's Panic Shield**:
@@ -259,7 +294,7 @@ psql -d mydatabase -f src/plnim/sql/extension.sql
 
 ## 🧪 Automated Multi-Version Test Matrix
 
-PL/Nim includes an automated test runner validating all 11 core feature suites across PostgreSQL versions:
+PL/Nim includes an automated test runner validating all 13 core feature suites across PostgreSQL versions:
 
 ```bash
 # Run test suite across PostgreSQL 14, 15, 16, and 17:
@@ -277,7 +312,7 @@ PL/Nim includes an automated test runner validating all 11 core feature suites a
 * [x] **Native `JSON` & `JSONB` via `JsonNode`**
 * [x] **Multi-Version Matrix (PostgreSQL 13 - 17)**
 * [x] **In-Memory Handle Cache in `plnim_call_handler`** (Microsecond dispatch)
-* [ ] **Set-Returning Functions (`RETURNS SETOF` / `RETURNS TABLE`)**
+* [x] **Set-Returning Functions (`RETURNS SETOF` / `RETURNS TABLE`)**
 * [ ] **Embedded SPI Query Engine**
 
 ---
