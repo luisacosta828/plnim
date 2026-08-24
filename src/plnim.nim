@@ -99,13 +99,6 @@ proc generate_composite_type_def*(type_oid: Oid, nim_type_name: string): string 
   return ""
 
 
-const Anum_pg_proc_proretset {.importc: "Anum_pg_proc_proretset", nodecl.}: cuint = 14
-
-template get_pg_proc_retset*(ttuple: typed): bool =
-  var is_null = false
-  var datum = SysCacheGetAttr(PROCOID, ttuple, Anum_pg_proc_proretset, addr(is_null))
-  (cast[uint](datum) != 0)
-
 proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, heapTuple: spi.HeapTuple, prorettype: Oid, proargnames: seq[string]): string =
   var 
     proretset = get_pg_proc_retset(heapTuple)
@@ -179,6 +172,9 @@ $body
 
     if not import_def.contains("std/json") and not import_def.contains("json"):
       allImports.add "import std/json"
+
+    if not import_def.contains("pgxcrown/spi") and not import_def.contains("spi"):
+      allImports.add "import pgxcrown/[spi, query_builder]"
 
     result = proc_template.multireplace([
       ("$import_def", allImports.join("\n")),
