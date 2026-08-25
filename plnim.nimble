@@ -9,7 +9,7 @@ srcDir        = "src"
 
 # Dependencies
 
-requires "nim >= 2.0", "pgxcrown >= 0.17.2"
+requires "nim >= 2.0", "pgxcrown >= 0.17.3"
 
 # Compile plnim extension library
 before install:
