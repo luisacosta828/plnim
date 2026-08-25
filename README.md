@@ -247,6 +247,56 @@ SELECT * FROM generate_grid(3);
 
 ---
 
+## ⚡ Type-Safe SPI & Fluent Query Engine
+
+PL/Nim provides native access to PostgreSQL's Server Programming Interface (SPI) combined with **Pgxcrown's Fluent Query Builder DSL**. Write type-safe, compile-time verified database queries directly inside your Nim functions without writing raw SQL strings:
+
+### 1. Fluent Scalar Aggregations (`fetchScalar[T]`)
+```sql
+CREATE FUNCTION get_eng_payroll() RETURNS float8 AS $$
+  let s = table("staff", "s")
+  return fetchScalar[float64](
+    Select(sum(s.salary))
+      .From(s)
+      .Where(s.dept == "Engineering")
+  )
+$$ LANGUAGE plnim;
+```
+
+### 2. Fluent Row Queries with Dynamic JSON Aggregation (`fetchRows`)
+```sql
+CREATE FUNCTION get_department_summary() RETURNS jsonb AS $$
+  let s = table("staff", "s")
+  let rows = fetchRows(
+    Select(s.dept as "dept_name", count(s.id) as "headcount")
+      .From(s)
+      .GroupBy(s.dept)
+      .OrderBy(s.dept)
+  )
+  var res = newJObject()
+  for r in rows:
+    res[r["dept_name"]] = %*(r["headcount"].parseInt)
+  return res
+$$ LANGUAGE plnim;
+```
+
+### 3. Strongly-Typed Entity Mapping with Set-Returning Functions (`fetch[T]`)
+```sql
+CREATE TYPE employee_dto AS (name text, salary float8);
+
+CREATE FUNCTION get_top_earners(min_sal float8) RETURNS SETOF employee_dto AS $$
+  let s = table("staff", "s")
+  return fetch[Employee_dto](
+    Select(s.name, s.salary)
+      .From(s)
+      .Where(s.salary >= min_sal)
+      .OrderBy(s.salary.desc)
+  )
+$$ LANGUAGE plnim;
+```
+
+---
+
 ## 🛡️ Panic Shield & Exception Safety
 
 Unlike traditional C extensions where segmentation faults or uncaught exceptions crash the entire PostgreSQL server backend, PL/Nim uses **Pgxcrown's Panic Shield**:
@@ -271,7 +321,7 @@ When an exception occurs:
 ### Prerequisites
 * [Nim](https://nim-lang.org/) (>= 2.0.0)
 * [PostgreSQL](https://www.postgresql.org/) (13, 14, 15, 16, or 17) with development headers (`postgresql-server-dev-*` / `libpq-dev`).
-* [Pgxcrown](https://github.com/luisacosta828/pgxcrown) (>= 0.17.1)
+* [Pgxcrown](https://github.com/luisacosta828/pgxcrown) (>= 0.17.2)
 
 ### Build & Install
 ```bash
@@ -294,7 +344,7 @@ psql -d mydatabase -f src/plnim/sql/extension.sql
 
 ## 🧪 Automated Multi-Version Test Matrix
 
-PL/Nim includes an automated test runner validating all 13 core feature suites across PostgreSQL versions:
+PL/Nim includes an automated test runner validating all 16 core feature suites across PostgreSQL versions:
 
 ```bash
 # Run test suite across PostgreSQL 14, 15, 16, and 17:
@@ -313,7 +363,7 @@ PL/Nim includes an automated test runner validating all 13 core feature suites a
 * [x] **Multi-Version Matrix (PostgreSQL 13 - 17)**
 * [x] **In-Memory Handle Cache in `plnim_call_handler`** (Microsecond dispatch)
 * [x] **Set-Returning Functions (`RETURNS SETOF` / `RETURNS TABLE`)**
-* [ ] **Embedded SPI Query Engine**
+* [x] **Embedded SPI & Fluent Query Engine (`fetch`, `fetchScalar`, `fetchRows`)**
 
 ---
 

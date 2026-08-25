@@ -54,7 +54,7 @@ RUN git config --system --add safe.directory "*"
 USER postgres
 ENV HOME=/var/lib/postgresql
 RUN git config --global --add safe.directory "*" && \
-    nimble install -y https://github.com/luisacosta828/pgxcrown.git
+    nimble install -y pgxcrown
 
 USER root
 RUN ln -sf /var/lib/postgresql/.nimble/bin/pgxtool /usr/local/bin/pgxtool
@@ -63,10 +63,12 @@ RUN ln -sf /var/lib/postgresql/.nimble/bin/pgxtool /usr/local/bin/pgxtool
 # 4. Build & Install PL/Nim Extension Library
 # -----------------------------------------------------------------------------
 WORKDIR /tmp/plnim_build
-COPY --chown=postgres:postgres . .
+COPY . .
+RUN chown -R postgres:postgres /tmp/plnim_build
 
 USER postgres
-RUN nim c --hints:off -d:release --app:lib -o:plnim.so src/plnim.nim && \
+RUN rm -f plnim.so && \
+    nim c --hints:off -d:release --app:lib -o:plnim.so src/plnim.nim && \
     nimble install -y
 
 USER root

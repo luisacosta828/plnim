@@ -173,6 +173,9 @@ $body
     if not import_def.contains("std/json") and not import_def.contains("json"):
       allImports.add "import std/json"
 
+    if not import_def.contains("std/tables") and not import_def.contains("tables"):
+      allImports.add "import std/tables"
+
     if not import_def.contains("pgxcrown/spi") and not import_def.contains("spi"):
       allImports.add "import pgxcrown/[spi, query_builder]"
 

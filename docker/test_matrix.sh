@@ -189,10 +189,67 @@ for V in $VERSIONS; do
     $$ LANGUAGE plnim;
 
     SELECT * FROM fn_feat13_generate_grid(3);
+
+    -- -------------------------------------------------------------------------
+    -- FEATURE 14: SPI Fluent Scalar Aggregation (fetchScalar)
+    -- -------------------------------------------------------------------------
+    CREATE TABLE IF NOT EXISTS tbl_staff (id serial, name text, dept text, salary float8);
+    TRUNCATE tbl_staff;
+    INSERT INTO tbl_staff (name, dept, salary) VALUES
+      ('Alice', 'Engineering', 95000.0),
+      ('Bob', 'Sales', 60000.0),
+      ('Charlie', 'Engineering', 105000.0);
+
+    CREATE FUNCTION fn_feat14_eng_payroll() RETURNS float8 AS $$
+      let s = table("tbl_staff", "s")
+      return fetchScalar[float64](
+        Select(sum(s.salary))
+          .From(s)
+          .Where(s.dept == "Engineering")
+      )
+    $$ LANGUAGE plnim;
+
+    SELECT fn_feat14_eng_payroll() AS "Feature 14 (SPI Fluent Scalar)";
+
+    -- -------------------------------------------------------------------------
+    -- FEATURE 15: SPI Fluent Row Query (fetchRows)
+    -- -------------------------------------------------------------------------
+    CREATE FUNCTION fn_feat15_dept_summary() RETURNS jsonb AS $$
+      let s = table("tbl_staff", "s")
+      let rows = fetchRows(
+        Select(s.dept as "dept_name", count(s.id) as "headcount")
+          .From(s)
+          .GroupBy(s.dept)
+          .OrderBy(s.dept)
+      )
+      var res = newJObject()
+      for r in rows:
+        res[r["dept_name"]] = %*(r["headcount"].parseInt)
+      return res
+    $$ LANGUAGE plnim;
+
+    SELECT fn_feat15_dept_summary() AS "Feature 15 (SPI Fluent Rows)";
+
+    -- -------------------------------------------------------------------------
+    -- FEATURE 16: SPI Fluent Strongly-Typed Entity Mapping (fetch[T])
+    -- -------------------------------------------------------------------------
+    CREATE TYPE staff_dto AS (name text, salary float8);
+
+    CREATE FUNCTION fn_feat16_top_earners(min_sal float8) RETURNS SETOF staff_dto AS $$
+      let s = table("tbl_staff", "s")
+      return fetch[Staff_dto](
+        Select(s.name, s.salary)
+          .From(s)
+          .Where(s.salary >= min_sal)
+          .OrderBy(s.salary.desc)
+      )
+    $$ LANGUAGE plnim;
+
+    SELECT * FROM fn_feat16_top_earners(80000.0);
 EOSQL
 
   echo ""
-  echo "✅ [PostgreSQL $V] ALL 13 FEATURES PASSED 100% SUCCESSFULLY!"
+  echo "✅ [PostgreSQL $V] ALL 16 FEATURES PASSED 100% SUCCESSFULLY!"
   docker rm -f "${CONTAINER}" >/dev/null 2>&1
 done
 
