@@ -72,7 +72,7 @@ USER root
 # Install plnim.so into PostgreSQL shared libraries directory and deploy extension specs
 RUN cp plnim.so $(pg_config --pkglibdir)/ && \
     mkdir -p $(pg_config --sharedir)/extension && \
-    cp plnim.control plnim--0.6.0.sql $(pg_config --sharedir)/extension/
+    cp plnim.control plnim*.sql $(pg_config --sharedir)/extension/
 
 # Register plnim extension automatically on container initialization
 RUN mkdir -p /docker-entrypoint-initdb.d && \

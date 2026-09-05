@@ -1,5 +1,5 @@
 # PL/Nim procedural language extension
 comment = 'PL/Nim procedural language'
-default_version = '0.6.0'
+default_version = '0.7.0'
 module_pathname = '$libdir/plnim'
 relocatable = false

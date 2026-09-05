@@ -1,6 +1,6 @@
     # Package
 
-version       = "0.6.0"
+version       = "0.7.0"
 author        = "luisacosta"
 description   = "Language Handler for executing Nim inside postgres as a procedural language"
 license       = "MIT"

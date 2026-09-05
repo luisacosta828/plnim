@@ -7,7 +7,7 @@
 
 [![Nim Version](https://img.shields.io/badge/Nim-2.0%2B-FFE953?logo=nim&logoColor=white)](https://nim-lang.org/)
 [![PostgreSQL Support](https://img.shields.io/badge/PostgreSQL-13%20--%2017-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Release](https://img.shields.io/badge/Release-v0.6.0-00E599?logo=github)](https://github.com/luisacosta828/plnim/releases)
+[![Release](https://img.shields.io/badge/Release-v0.7.0-00E599?logo=github)](https://github.com/luisacosta828/plnim/releases)
 [![Core Engine](https://img.shields.io/badge/Powered%20By-Pgxcrown%20👑-00E599)](https://github.com/luisacosta828/pgxcrown)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Memory Safety](https://img.shields.io/badge/Safety-Panic%20Shield-success)](#-panic-shield--exception-safety)
@@ -74,6 +74,23 @@ $$ LANGUAGE plnim;
 
 SELECT hello_nim('Developer');
 -- Output: "Hello, Developer! Powered by PL/Nim ⚡"
+```
+
+### 📦 Automated Host Installation (`install.sh`)
+
+Deploy PL/Nim directly into your host PostgreSQL installation:
+
+```bash
+# Build and install core library and extension definitions:
+./install.sh
+
+# Or install and automatically enable in a target database:
+./install.sh -d my_database
+```
+
+Once installed, enable it in any database via standard PostgreSQL SQL:
+```sql
+CREATE EXTENSION plnim;
 ```
 
 ---
@@ -251,28 +268,26 @@ SELECT * FROM generate_grid(3);
 
 PL/Nim provides native access to PostgreSQL's Server Programming Interface (SPI) combined with **Pgxcrown's Fluent Query Builder DSL**. Write type-safe, compile-time verified database queries directly inside your Nim functions without writing raw SQL strings:
 
-### 1. Fluent Scalar Aggregations (`fetchScalar[T]`)
+### 1. Fluent Scalar Aggregations (`.scalar`)
 ```sql
 CREATE FUNCTION get_eng_payroll() RETURNS float8 AS $$
   let s = table("staff", "s")
-  return fetchScalar[float64](
-    Select(sum(s.salary))
-      .From(s)
-      .Where(s.dept == "Engineering")
-  )
+  return Select(sum(s.salary))
+    .From(s)
+    .Where(s.dept == "Engineering")
+    .scalar(float64)
 $$ LANGUAGE plnim;
 ```
 
-### 2. Fluent Row Queries with Dynamic JSON Aggregation (`fetchRows`)
+### 2. Fluent Row Queries with Polymorphic OrderBy (`.rows`)
 ```sql
 CREATE FUNCTION get_department_summary() RETURNS jsonb AS $$
   let s = table("staff", "s")
-  let rows = fetchRows(
-    Select(s.dept as "dept_name", count(s.id) as "headcount")
-      .From(s)
-      .GroupBy(s.dept)
-      .OrderBy(s.dept)
-  )
+  let rows = Select(s.dept as "dept_name", count(s.id) as "headcount")
+    .From(s)
+    .GroupBy(s.dept)
+    .OrderBy(s.dept) -- Direction omitted or mixed (.asc / .desc)
+    .rows()
   var res = newJObject()
   for r in rows:
     res[r["dept_name"]] = %*(r["headcount"].parseInt)
@@ -280,18 +295,30 @@ CREATE FUNCTION get_department_summary() RETURNS jsonb AS $$
 $$ LANGUAGE plnim;
 ```
 
-### 3. Strongly-Typed Entity Mapping with Set-Returning Functions (`fetch[T]`)
+### 3. Strongly-Typed Entity Mapping with Set-Returning Functions (`.all`)
 ```sql
 CREATE TYPE employee_dto AS (name text, salary float8);
 
 CREATE FUNCTION get_top_earners(min_sal float8) RETURNS SETOF employee_dto AS $$
   let s = table("staff", "s")
-  return fetch[Employee_dto](
-    Select(s.name, s.salary)
-      .From(s)
-      .Where(s.salary >= min_sal)
-      .OrderBy(s.salary.desc)
-  )
+  return Select(s.name, s.salary)
+    .From(s)
+    .Where(s.salary >= min_sal)
+    .OrderBy(s.salary.desc)
+    .all(Employee_dto)
+$$ LANGUAGE plnim;
+```
+
+### 4. DML with RETURNING Extraction (`.first`)
+```sql
+CREATE FUNCTION hire_employee(name text, dept text, salary float8) RETURNS employee_dto AS $$
+  let rec = InsertInto("staff", "name", "dept", "salary")
+    .Values("'" & name & "'", "'" & dept & "'", $salary)
+    .Returning("name", "salary")
+    .first(Employee_dto)
+  if rec.isSome:
+    return rec.get
+  return Employee_dto()
 $$ LANGUAGE plnim;
 ```
 

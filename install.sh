@@ -152,7 +152,7 @@ $SUDO cp -f "plnim.so" "$PKGLIBDIR/"
 log_info "Deploying extension control and SQL definitions..."
 $SUDO mkdir -p "$EXTDIR"
 $SUDO cp -f "plnim.control" "$EXTDIR/"
-$SUDO cp -f "plnim--0.6.0.sql" "$EXTDIR/"
+$SUDO cp -f plnim*.sql "$EXTDIR/"
 
 log_success "PL/Nim core files installed into PostgreSQL system tree."
 
