@@ -20,6 +20,8 @@ RUN apt-get update && \
         gcc \
         libpq-dev \
         postgresql-server-dev-${PG_MAJOR} \
+        postgresql-plpython3-${PG_MAJOR} \
+        python3 \
         wget \
         xz-utils \
         git \
