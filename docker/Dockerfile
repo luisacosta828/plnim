@@ -15,11 +15,9 @@ SHELL ["/bin/bash", "-c"]
 # 1. System Build Dependencies & PostgreSQL Development Headers (Dynamic Version)
 # -----------------------------------------------------------------------------
 RUN apt-get update && \
-    PG_MAJOR=$(pg_config --version | awk '{print $2}' | cut -d. -f1) && \
     apt-get install -y --no-install-recommends \
         build-essential \
         gcc \
-        postgresql-contrib \
         libpq-dev \
         postgresql-server-dev-${PG_MAJOR} \
         wget \
@@ -41,7 +39,7 @@ RUN wget -q https://nim-lang.org/download/nim-2.2.4-linux_x64.tar.xz && \
     ln -sf /opt/nim/bin/nimble /usr/local/bin/nimble
 
 # Set global PATH and pgxtool environment variables
-ENV PATH="/opt/nim/bin:/var/lib/postgresql/.nimble/bin:/usr/local/bin:${PATH}"
+ENV PATH="/usr/lib/postgresql/${PG_MAJOR}/bin:/opt/nim/bin:/var/lib/postgresql/.nimble/bin:/usr/local/bin:${PATH}"
 ENV PGXTOOL_BIN="/usr/local/bin/pgxtool"
 ENV PGXTOOL_INIT_DIR="/var/lib/postgresql/postgresql_pgxtool"
 
@@ -53,8 +51,9 @@ RUN git config --system --add safe.directory "*"
 # -----------------------------------------------------------------------------
 USER postgres
 ENV HOME=/var/lib/postgresql
+ARG CACHE_BUST=1
 RUN git config --global --add safe.directory "*" && \
-    nimble install -y pgxcrown
+    nimble install -y https://github.com/luisacosta828/pgxcrown.git
 
 USER root
 RUN ln -sf /var/lib/postgresql/.nimble/bin/pgxtool /usr/local/bin/pgxtool
@@ -67,13 +66,13 @@ COPY . .
 RUN chown -R postgres:postgres /tmp/plnim_build
 
 USER postgres
-RUN rm -f plnim.so && \
-    nim c --hints:off -d:release --app:lib -o:plnim.so src/plnim.nim && \
-    nimble install -y
+RUN nimble install -y
 
 USER root
-# Install plnim.so into PostgreSQL shared libraries directory
-RUN cp plnim.so $(pg_config --pkglibdir)/
+# Install plnim.so into PostgreSQL shared libraries directory and deploy extension specs
+RUN cp plnim.so $(pg_config --pkglibdir)/ && \
+    mkdir -p $(pg_config --sharedir)/extension && \
+    cp plnim.control plnim--0.6.0.sql $(pg_config --sharedir)/extension/
 
 # Register plnim extension automatically on container initialization
 RUN mkdir -p /docker-entrypoint-initdb.d && \

@@ -148,7 +148,7 @@ proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, heapTuple: 
     var proc_template = """
 $import_def
 $type_def
-proc $proc_name($args): $ret_type =
+proc $proc_name*($args): $ret_type =
 $body
 """
     var args: seq[string]
@@ -176,8 +176,11 @@ $body
     if not import_def.contains("std/tables") and not import_def.contains("tables"):
       allImports.add "import std/tables"
 
-    if not import_def.contains("pgxcrown/spi") and not import_def.contains("spi"):
-      allImports.add "import pgxcrown/[spi, query_builder]"
+    if not import_def.contains("std/strutils") and not import_def.contains("strutils"):
+      allImports.add "import std/strutils"
+
+    if not import_def.contains("pgxcrown"):
+      allImports.add "import pgxcrown"
 
     result = proc_template.multireplace([
       ("$import_def", allImports.join("\n")),

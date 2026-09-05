@@ -9,8 +9,9 @@ srcDir        = "src"
 
 # Dependencies
 
-requires "nim >= 2.0", "pgxcrown >= 0.17.3"
+requires "nim >= 2.0", "pgxcrown >= 0.20.1"
 
 # Compile plnim extension library
 before install:
-    exec("""nim c --hints:off -d:release --app:lib -o:plnim.so src/plnim""")
+    let pgInc = staticExec("pg_config --includedir-server")
+    exec("nim c --hints:off -d:release --app:lib --cincludes:\"" & pgInc & "\" -o:plnim.so src/plnim")

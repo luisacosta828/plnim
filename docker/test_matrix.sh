@@ -18,7 +18,7 @@ for V in $VERSIONS; do
   TAG="plnim-test-pg${V}"
   CONTAINER="plnim_test_runner_pg${V}"
   
-  docker build --build-arg PG_VERSION="${V}" -t "${TAG}" -f "${ROOT_DIR}/docker/Dockerfile" "${ROOT_DIR}"
+  docker build --build-arg PG_VERSION="${V}-bookworm" --build-arg CACHE_BUST="$(date +%s)" -t "${TAG}" -f "${ROOT_DIR}/docker/Dockerfile" "${ROOT_DIR}"
   
   docker rm -f "${CONTAINER}" 2>/dev/null || true
   
@@ -191,7 +191,7 @@ for V in $VERSIONS; do
     SELECT * FROM fn_feat13_generate_grid(3);
 
     -- -------------------------------------------------------------------------
-    -- FEATURE 14: SPI Fluent Scalar Aggregation (fetchScalar)
+    -- FEATURE 14: SPI Fluent Scalar Aggregation (.scalar)
     -- -------------------------------------------------------------------------
     CREATE TABLE IF NOT EXISTS tbl_staff (id serial, name text, dept text, salary float8);
     TRUNCATE tbl_staff;
@@ -202,26 +202,24 @@ for V in $VERSIONS; do
 
     CREATE FUNCTION fn_feat14_eng_payroll() RETURNS float8 AS $$
       let s = table("tbl_staff", "s")
-      return fetchScalar[float64](
-        Select(sum(s.salary))
-          .From(s)
-          .Where(s.dept == "Engineering")
-      )
+      return Select(sum(s.salary))
+        .From(s)
+        .Where(s.dept == "Engineering")
+        .scalar(float64)
     $$ LANGUAGE plnim;
 
     SELECT fn_feat14_eng_payroll() AS "Feature 14 (SPI Fluent Scalar)";
 
     -- -------------------------------------------------------------------------
-    -- FEATURE 15: SPI Fluent Row Query (fetchRows)
+    -- FEATURE 15: SPI Fluent Row Query (.rows)
     -- -------------------------------------------------------------------------
     CREATE FUNCTION fn_feat15_dept_summary() RETURNS jsonb AS $$
       let s = table("tbl_staff", "s")
-      let rows = fetchRows(
-        Select(s.dept as "dept_name", count(s.id) as "headcount")
-          .From(s)
-          .GroupBy(s.dept)
-          .OrderBy(s.dept)
-      )
+      let rows = Select(s.dept as "dept_name", count(s.id) as "headcount")
+        .From(s)
+        .GroupBy(s.dept)
+        .OrderBy(s.dept)
+        .rows()
       var res = newJObject()
       for r in rows:
         res[r["dept_name"]] = %*(r["headcount"].parseInt)
@@ -231,25 +229,39 @@ for V in $VERSIONS; do
     SELECT fn_feat15_dept_summary() AS "Feature 15 (SPI Fluent Rows)";
 
     -- -------------------------------------------------------------------------
-    -- FEATURE 16: SPI Fluent Strongly-Typed Entity Mapping (fetch[T])
+    -- FEATURE 16: SPI Fluent Strongly-Typed Entity Mapping (.all)
     -- -------------------------------------------------------------------------
     CREATE TYPE staff_dto AS (name text, salary float8);
 
     CREATE FUNCTION fn_feat16_top_earners(min_sal float8) RETURNS SETOF staff_dto AS $$
       let s = table("tbl_staff", "s")
-      return fetch[Staff_dto](
-        Select(s.name, s.salary)
-          .From(s)
-          .Where(s.salary >= min_sal)
-          .OrderBy(s.salary.desc)
-      )
+      return Select(s.name, s.salary)
+        .From(s)
+        .Where(s.salary >= min_sal)
+        .OrderBy(s.salary.desc)
+        .all(Staff_dto)
     $$ LANGUAGE plnim;
 
     SELECT * FROM fn_feat16_top_earners(80000.0);
+
+    -- -------------------------------------------------------------------------
+    -- FEATURE 17: SPI Fluent DML with RETURNING (.first)
+    -- -------------------------------------------------------------------------
+    CREATE FUNCTION fn_feat17_add_staff(name text, dept text, salary float8) RETURNS staff_dto AS $$
+      let rec = InsertInto("tbl_staff", "name", "dept", "salary")
+        .Values("'" & name & "'", "'" & dept & "'", $salary)
+        .Returning("name", "salary")
+        .first(Staff_dto)
+      if rec.isSome:
+        return rec.get
+      return Staff_dto()
+    $$ LANGUAGE plnim;
+
+    SELECT * FROM fn_feat17_add_staff('Diana', 'Design', 88000.0);
 EOSQL
 
   echo ""
-  echo "✅ [PostgreSQL $V] ALL 16 FEATURES PASSED 100% SUCCESSFULLY!"
+  echo "✅ [PostgreSQL $V] ALL 17 FEATURES PASSED 100% SUCCESSFULLY!"
   docker rm -f "${CONTAINER}" >/dev/null 2>&1
 done
 
