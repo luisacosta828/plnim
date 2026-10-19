@@ -194,7 +194,7 @@ for V in $VERSIONS; do
     -- FEATURE 14: SPI Fluent Scalar Aggregation (.scalar)
     -- -------------------------------------------------------------------------
     CREATE TABLE IF NOT EXISTS tbl_staff (id serial, name text, dept text, salary float8);
-    TRUNCATE tbl_staff;
+    TRUNCATE tbl_staff RESTART IDENTITY;
     INSERT INTO tbl_staff (name, dept, salary) VALUES
       ('Alice', 'Engineering', 95000.0),
       ('Bob', 'Sales', 60000.0),
@@ -249,7 +249,7 @@ for V in $VERSIONS; do
     -- -------------------------------------------------------------------------
     CREATE FUNCTION fn_feat17_add_staff(name text, dept text, salary float8) RETURNS staff_dto AS $$
       let rec = InsertInto("tbl_staff", "name", "dept", "salary")
-        .Values("'" & name & "'", "'" & dept & "'", $salary)
+        .Values(name, dept, salary)
         .Returning("name", "salary")
         .first(Staff_dto)
       if rec.isSome:
@@ -258,10 +258,108 @@ for V in $VERSIONS; do
     $$ LANGUAGE plnim;
 
     SELECT * FROM fn_feat17_add_staff('Diana', 'Design', 88000.0);
+
+    -- -------------------------------------------------------------------------
+    -- FEATURE 18: Zero-Copy PgVector[T] Array Return & RETURNS void Execution
+    -- -------------------------------------------------------------------------
+    CREATE FUNCTION fn_feat18_scale_vector(vec float8[], factor float8) RETURNS float8[] AS $$
+      var scaled = newSeq[float64](vec.len)
+      for i in 0 ..< vec.len:
+        scaled[i] = vec[i] * factor
+      return toPgVector(scaled)
+    $$ LANGUAGE plnim;
+
+    CREATE FUNCTION fn_feat18_bump_salary(target_dept text, bonus float8) RETURNS void AS $$
+      let s = table("tbl_staff")
+      Update(s)
+        .Set(s.salary, raw("salary + " & $bonus))
+        .Where(s.dept == target_dept)
+        .run()
+    $$ LANGUAGE plnim;
+
+    SELECT fn_feat18_scale_vector(ARRAY[1.5, 2.5, 3.5], 2.0) AS "Feature 18a (PgVector Return)";
+    SELECT fn_feat18_bump_salary('Design', 2000.0);
+    SELECT salary AS "Feature 18b (Updated Design Salary = 90000)" FROM tbl_staff WHERE dept = 'Design';
+
+
+    -- -------------------------------------------------------------------------
+    -- FEATURE 19: Expanded ColumnExpr AST & SPI Array Deserialization
+    -- -------------------------------------------------------------------------
+    CREATE TABLE IF NOT EXISTS tbl_projects (id serial, title text, tags text[], scores int[]);
+    TRUNCATE tbl_projects RESTART IDENTITY;
+    INSERT INTO tbl_projects (title, tags, scores) VALUES
+      ('Core Engine', ARRAY['nim', 'postgres', 'c'], ARRAY[98, 99]),
+      ('Web Portal', ARRAY['html', 'css'], ARRAY[80, 85]);
+
+    CREATE FUNCTION fn_feat19_search_projects() RETURNS text AS $$
+      type ProjectDto = object
+        title: string
+        tags: seq[string]
+        scores: seq[int32]
+      let p = table("tbl_projects", "p")
+      let matches = Select(p.title, p.tags, p.scores)
+        .From(p)
+        .Where(p.title.ilike("%engine%") and p.id.between(1, 10))
+        .OrderBy(p.title.asc.nullsLast)
+        .all(ProjectDto)
+      if matches.len > 0:
+        let m = matches[0]
+        return m.title & " | tags=" & m.tags.join(",") & " | top_score=" & $m.scores[^1]
+      return "none"
+    $$ LANGUAGE plnim;
+
+    SELECT fn_feat19_search_projects() AS "Feature 19 (ColumnExpr & SPI Array Mapping)";
+
+    -- -------------------------------------------------------------------------
+    -- FEATURE 20: Internal Subtransaction Savepoints (savepoint Isolation)
+    -- -------------------------------------------------------------------------
+    CREATE FUNCTION fn_feat20_isolated_batch() RETURNS int AS $$
+      var committed = 0'i32
+      for i in 1 .. 3:
+        savepoint:
+          if i == 2:
+            raise newException(ValueError, "Simulated item 2 failure")
+          committed.inc
+        do:
+          pgNotice("Recovered from batch item failure: " & err.msg)
+      return committed
+    $$ LANGUAGE plnim;
+
+    SELECT fn_feat20_isolated_batch() AS "Feature 20 (Savepoint Batch = 2)";
+
+    -- -------------------------------------------------------------------------
+    -- FEATURE 21: Composite Record Array Input (geo_point[] -> seq[Geo_point])
+    -- -------------------------------------------------------------------------
+    CREATE FUNCTION fn_feat21_centroid(points geo_point[]) RETURNS geo_point AS $$
+      if points.len == 0:
+        return Geo_point(x: 0.0, y: 0.0)
+      var sumX = 0.0
+      var sumY = 0.0
+      for pt in points:
+        sumX += pt.x
+        sumY += pt.y
+      result.x = sumX / points.len.float64
+      result.y = sumY / points.len.float64
+    $$ LANGUAGE plnim;
+
+    SELECT * FROM fn_feat21_centroid(ARRAY[ROW(0.0, 0.0)::geo_point, ROW(6.0, 9.0)::geo_point, ROW(3.0, 3.0)::geo_point]);
+
+    -- -------------------------------------------------------------------------
+    -- FEATURE 22: Zero-Copy PgText Operations (Slicing, Prefix/Suffix, Strip)
+    -- -------------------------------------------------------------------------
+    CREATE FUNCTION fn_feat22_pgtext_ops(raw_input text) RETURNS text AS $$
+      let clean = raw_input.strip()
+      if clean.startsWith("[PLNIM]") and clean.endsWith(":OK"):
+        let payload = clean[7 .. clean.len - 4].strip()
+        return "VALID:" & payload.toUpperAscii()
+      return "INVALID"
+    $$ LANGUAGE plnim;
+
+    SELECT fn_feat22_pgtext_ops('  [PLNIM] zero-copy engine :OK  ') AS "Feature 22 (Zero-Copy PgText)";
 EOSQL
 
   echo ""
-  echo "✅ [PostgreSQL $V] ALL 17 FEATURES PASSED 100% SUCCESSFULLY!"
+  echo "✅ [PostgreSQL $V] ALL 22 FEATURES PASSED 100% SUCCESSFULLY!"
   docker rm -f "${CONTAINER}" >/dev/null 2>&1
 done
 

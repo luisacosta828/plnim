@@ -15,23 +15,38 @@ var gFunctionCache: Table[Oid, CachedPlnimFunction]
 
 PG_MODULE_MAGIC
 
-proc translate_pg_types_to_nim(typ: string): string {.inline.} =
+{.push header: "utils/lsyscache.h".}
+proc get_element_type(typid: Oid): Oid {.importc: "get_element_type".}
+{.pop.}
+
+proc translate_pg_types_to_nim(typ: string, forCompositeField: bool = false): string {.inline.} =
   case typ
+  of "void": "void"
   of "int4", "int": "int32"
   of "int8": "int64"
   of "int2": "int16"
+  of "oid": "uint32"
   of "float4": "float32"
   of "float8": "float64"
-  of "text", "varchar": "string"
+  of "char": "char"
+  of "text", "varchar", "bpchar", "name": "string"
   of "bool", "boolean": "bool"
   of "json", "jsonb": "JsonNode"
-  of "_int4", "int4[]": "seq[int32]"
-  of "_int8", "int8[]": "seq[int64]"
-  of "_float8", "float8[]": "seq[float64]"
-  of "_text", "text[]": "seq[string]"
-  of "_bool", "bool[]": "seq[bool]"
+  of "_int4", "int4[]": (if forCompositeField: "seq[int32]" else: "PgVector[int32]")
+  of "_int8", "int8[]": (if forCompositeField: "seq[int64]" else: "PgVector[int64]")
+  of "_int2", "int2[]": (if forCompositeField: "seq[int16]" else: "PgVector[int16]")
+  of "_float4", "float4[]": (if forCompositeField: "seq[float32]" else: "PgVector[float32]")
+  of "_float8", "float8[]": (if forCompositeField: "seq[float64]" else: "PgVector[float64]")
+  of "_bool", "bool[]": (if forCompositeField: "seq[bool]" else: "PgVector[bool]")
+  of "_text", "text[]", "_varchar", "varchar[]", "_bpchar", "bpchar[]": "seq[string]"
   of "_json", "json[]", "_jsonb", "jsonb[]": "seq[JsonNode]"
-  else: typ.capitalizeAscii
+  else:
+    if typ.startsWith("_") and typ.len > 1:
+      "seq[" & typ[1 .. ^1].capitalizeAscii & "]"
+    elif typ.endsWith("[]") and typ.len > 2:
+      "seq[" & typ[0 .. ^3].capitalizeAscii & "]"
+    else:
+      typ.capitalizeAscii
 
 
 proc extract_imports_and_body(prosrc: string): (string, string) =
@@ -79,7 +94,6 @@ proc generate_composite_type_def*(type_oid: Oid, nim_type_name: string): string 
     return ""
   
   var fields: seq[string] = @[]
-  var is_null = false
   for i in 0 ..< int(cast[TupleDescStruct](tupdesc).natts):
     var attr = TupleDescAttr(tupdesc, i.cint)
     if not attr.attisdropped:
@@ -89,7 +103,7 @@ proc generate_composite_type_def*(type_oid: Oid, nim_type_name: string): string 
       if not type_tuple.isNil:
         var pg_name = get_pg_type_name(type_tuple)
         ReleaseSysCache(type_tuple)
-        var field_nim_type = translate_pg_types_to_nim($pg_name)
+        var field_nim_type = translate_pg_types_to_nim($pg_name, forCompositeField = true)
         fields.add "  " & field_name & "*: " & field_nim_type
 
   DecrTupleDescRefCount(tupdesc)
@@ -103,7 +117,6 @@ proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, heapTuple: 
   var 
     proretset = get_pg_proc_retset(heapTuple)
     plnim_args: seq[string] = @[]
-    is_null = false
     rettype_tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(prorettype))
     plnim_rettype = if not rettype_tuple.isNil:
       let n = $get_pg_type_name(rettype_tuple)
@@ -120,7 +133,16 @@ proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, heapTuple: 
   var type_defs: seq[string] = @[]
 
   proc collect_composite_type(type_oid: Oid, nim_type: string) =
-    if nim_type notin generated_types and not nim_type.startsWith("seq[") and nim_type notin ["int16", "int32", "int64", "float32", "float64", "string", "bool", "JsonNode"]:
+    if nim_type.startsWith("seq["):
+      let inner_type = nim_type[4 .. ^2]
+      if inner_type notin ["void", "char", "uint32", "int16", "int32", "int64", "float32", "float64", "string", "PgText", "bool", "JsonNode"]:
+        let elem_oid = get_element_type(type_oid)
+        if elem_oid != 0.Oid:
+          collect_composite_type(elem_oid, inner_type)
+        else:
+          collect_composite_type(type_oid, inner_type)
+      return
+    if nim_type notin generated_types and not nim_type.startsWith("PgVector[") and nim_type notin ["void", "char", "uint32", "int16", "int32", "int64", "float32", "float64", "string", "PgText", "bool", "JsonNode"]:
       let def = generate_composite_type_def(type_oid, nim_type)
       if def.len > 0:
         generated_types.add nim_type
@@ -148,7 +170,7 @@ proc to_pgxcrown(proname: cstring, prosrc: cstring, pronargs: int16, heapTuple: 
     var proc_template = """
 $import_def
 $type_def
-proc $proc_name*($args): $ret_type =
+proc $proc_name*($args)$ret_decl =
 $body
 """
     var args: seq[string]
@@ -179,14 +201,19 @@ $body
     if not import_def.contains("std/strutils") and not import_def.contains("strutils"):
       allImports.add "import std/strutils"
 
+    if not import_def.contains("std/options") and not import_def.contains("options"):
+      allImports.add "import std/options"
+
     if not import_def.contains("pgxcrown"):
       allImports.add "import pgxcrown"
+
+    let retDecl = if ret_nim_type == "void": "" else: ": " & ret_nim_type
 
     result = proc_template.multireplace([
       ("$import_def", allImports.join("\n")),
       ("$type_def", type_defs.join("\n")),
       ("$proc_name", $proname),
-      ("$ret_type", ret_nim_type),
+      ("$ret_decl", retDecl),
       ("$body", body),
       ("$args", args.join(", "))
     ])
@@ -254,12 +281,9 @@ proc plnim_validator*(): Datum {. pgv1 .} =
     var 
       fn_oid = getOid(0)
       heapTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(fn_oid)) 
-      is_null = false
       proname = get_pg_proc_name(heapTuple) 
       prosrc = get_pg_proc_src(heapTuple)
       pronargs = get_pg_proc_nargs(heapTuple)
-      prodefault_nargs = get_pg_proc_default_nargs(heapTuple)
-      proargtypes = get_pg_proc_argtypes(heapTuple)
       prorettype = get_pg_proc_rettype(heapTuple) 
       proargnames = get_pg_proc_argnames(heapTuple)
       
@@ -338,33 +362,32 @@ proc plnim_call_handler*(fcinfo: FunctionCallInfo): Datum {.pgv1_plnim.} =
     if heapTuple == nil:
       reportError("PL/Nim Execution Error: Function OID " & $fn_oid & " not found in syscache.")
 
-    var is_null = false
-    var proname = get_pg_proc_name(heapTuple)
-    try:
-      when defined(linux) or defined(macosx) or defined(windows):
-        let libname = getFunctionLibPath($proname)
-        let lib = loadLib(libname)
+    let proname = $get_pg_proc_name(heapTuple)
+    ReleaseSysCache(heapTuple)
 
-        if lib == nil:
-          reportError("PL/Nim Execution Error: Dynamic library for function '" & $proname & "' could not be loaded from path '" & libname & "'. Please verify 'pgxtool build-extension " & $proname & "' executed successfully.")
+    when defined(linux) or defined(macosx) or defined(windows):
+      let libname = getFunctionLibPath(proname)
+      let lib = loadLib(libname)
+
+      if lib == nil:
+        reportError("PL/Nim Execution Error: Dynamic library for function '" & proname & "' could not be loaded from path '" & libname & "'. Please verify 'pgxtool build-extension " & proname & "' executed successfully.")
+      
+      let nimfn_name = cstring("pgx_" & proname)
+      var sym = lib.symAddr(nimfn_name)
         
-        let nimfn_name = cstring("pgx_" & $proname)
-        var sym = lib.symAddr(nimfn_name)
-          
-        if sym == nil:
-          reportError("PL/Nim Execution Error: Exported symbol 'pgx_" & $proname & "' was not found inside dynamic library '" & libname & "'.")
-         
-        var fn_call = cast[pg_proc](sym)
+      if sym == nil:
+        reportError("PL/Nim Execution Error: Exported symbol 'pgx_" & proname & "' was not found inside dynamic library '" & libname & "'.")
+       
+      var fn_call = cast[pg_proc](sym)
 
-        # Store in session memory cache for all subsequent calls
-        gFunctionCache[fn_oid] = CachedPlnimFunction(lib: lib, fn_call: fn_call)
+      # Store in session memory cache for all subsequent calls
+      gFunctionCache[fn_oid] = CachedPlnimFunction(lib: lib, fn_call: fn_call)
 
-        return fn_call(fcinfo)
+      return fn_call(fcinfo)
 
-      else:
-        reportError("PL/Nim Execution Error: PL/Nim dynamic execution is not supported on this platform.")
-    finally:
-      ReleaseSysCache(heapTuple)
+    else:
+      reportError("PL/Nim Execution Error: PL/Nim dynamic execution is not supported on this platform.")
+
 
 PG_FUNCTION_INFO_V1(plnim_call_handler)
 PG_FUNCTION_INFO_V1(plnim_validator)
